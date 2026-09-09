@@ -127,7 +127,7 @@ static void SetDialogStatus(HANDLE dialog, const std::wstring& text)
     GPluginInfo.SendDlgMessage(dialog, DM_SETTEXT, SDI_STATUS, reinterpret_cast<void*>(const_cast<wchar_t*>(text.c_str())));
 }
 
-static bool TestDialogToken(HANDLE dialog, SettingsDialogState& state, std::wstring& token, std::wstring& login)
+static bool TestDialogToken(HANDLE dialog, std::wstring& token, std::wstring& login)
 {
     token = GetDialogText(dialog, SDI_TOKEN);
     if (token.empty())
@@ -148,7 +148,7 @@ static bool TestDialogToken(HANDLE dialog, SettingsDialogState& state, std::wstr
     return true;
 }
 
-static LONG_PTR WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intptr_t param1, void* param2)
+static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intptr_t param1, void* param2)
 {
     auto* state = static_cast<SettingsDialogState*>(param2);
 
@@ -158,7 +158,7 @@ static LONG_PTR WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
         {
             std::wstring token;
             std::wstring login;
-            TestDialogToken(dialog, *state, token, login);
+            TestDialogToken(dialog, token, login);
             return TRUE;
         }
 
@@ -183,7 +183,7 @@ static LONG_PTR WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
         {
             std::wstring token;
             std::wstring login;
-            if (!TestDialogToken(dialog, *state, token, login))
+            if (!TestDialogToken(dialog, token, login))
                 return TRUE;
 
             if (!state->Settings.SaveToken(token))
@@ -195,7 +195,6 @@ static LONG_PTR WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
             if (ActivePanel)
                 ActivePanel->ReloadSettings();
 
-            SetDialogStatus(dialog, L"Token saved securely with Windows DPAPI.");
             return FALSE;
         }
     }
