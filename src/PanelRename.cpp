@@ -137,7 +137,7 @@ intptr_t ProcessRenameInput(FarGitHubPanel* panel)
     const std::wstring oldPath = panel->FullPath(oldName);
     const std::wstring newPath = panel->FullPath(newName);
 
-    if (_wcsicmp(oldName.c_str(), newName.c_str()) == 0)
+    if (oldName == newName)
         return TRUE;
 
     // Не разрешаем переименование поверх существующего объекта.
