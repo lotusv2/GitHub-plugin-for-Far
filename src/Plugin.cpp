@@ -145,13 +145,20 @@ static std::wstring GetDialogText(HANDLE dialog, intptr_t item)
     wchar_t buffer[4096] = {};
     FarDialogItemData data = { sizeof(data), std::size(buffer) - 1, buffer };
     GPluginInfo.SendDlgMessage(dialog, DM_GETTEXT, item, &data);
-    buffer[data.PtrLength < std::size(buffer) ? data.PtrLength : std::size(buffer) - 1] = L'\0';
+    const size_t length = data.PtrLength < std::size(buffer) ? data.PtrLength : std::size(buffer) - 1;
+    buffer[length] = L'\0';
     return buffer;
+}
+
+static void SetDialogText(HANDLE dialog, intptr_t item, const std::wstring& text)
+{
+    FarDialogItemData data = { sizeof(data), text.size(), const_cast<wchar_t*>(text.c_str()) };
+    GPluginInfo.SendDlgMessage(dialog, DM_SETTEXT, item, &data);
 }
 
 static void SetDialogStatus(HANDLE dialog, const std::wstring& text)
 {
-    GPluginInfo.SendDlgMessage(dialog, DM_SETTEXT, SDI_STATUS, reinterpret_cast<void*>(const_cast<wchar_t*>(text.c_str())));
+    SetDialogText(dialog, SDI_STATUS, text);
 }
 
 static bool TestDialogToken(HANDLE dialog, std::wstring& token, std::wstring& login)
@@ -208,8 +215,7 @@ static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
 
             if (state->Settings.ClearToken())
             {
-                const wchar_t* empty = L"";
-                GPluginInfo.SendDlgMessage(dialog, DM_SETTEXT, SDI_TOKEN, reinterpret_cast<void*>(const_cast<wchar_t*>(empty)));
+                SetDialogText(dialog, SDI_TOKEN, L"");
                 SetDialogStatus(dialog, L"Token removed.");
                 if (ActivePanel)
                     ActivePanel->ReloadSettings();
