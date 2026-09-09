@@ -21,9 +21,12 @@ private:
     std::wstring Repository;
     std::wstring CurrentPath;
     std::vector<GitHubEntry> Entries;
+    std::vector<GitHubRepository> Repositories;
     std::wstring Error;
 
     bool Reload();
+    bool ReloadRepositories();
     std::wstring FullPath(const std::wstring& name) const;
     bool EditFile(const std::wstring& path);
+    void ShowError(const std::wstring& title = L"GitHub") const;
 };
