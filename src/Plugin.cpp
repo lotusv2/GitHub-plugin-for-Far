@@ -115,6 +115,9 @@ intptr_t WINAPI ConfigureW(const ConfigureInfo*)
     if (newToken.empty())
     {
         settings.ClearToken();
+        if (ActivePanel)
+            ActivePanel->ReloadSettings();
+
         const wchar_t* text[] = { L"GitHub for Far", L"GitHub token removed." };
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_LEFTALIGN | FMSG_MB_OK, nullptr, text, 2, 1);
         return TRUE;
@@ -136,6 +139,9 @@ intptr_t WINAPI ConfigureW(const ConfigureInfo*)
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, text, 2, 1);
         return FALSE;
     }
+
+    if (ActivePanel)
+        ActivePanel->ReloadSettings();
 
     const std::wstring status = L"Connected as " + login + L". Token saved securely with Windows DPAPI.";
     const wchar_t* text[] = { L"GitHub for Far", status.c_str() };
