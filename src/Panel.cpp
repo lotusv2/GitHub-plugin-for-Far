@@ -164,6 +164,8 @@ intptr_t FarGitHubPanel::ProcessInput(const INPUT_RECORD& record)
     const DWORD state = key.dwControlKeyState;
     const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
     const bool shift = (state & SHIFT_PRESSED) != 0;
+    if (!ctrl && !shift && key.wVirtualKeyCode == VK_F6 && !Repository.empty())
+        return ProcessRenameInput(this);
     if (ctrl && key.wVirtualKeyCode == 'B' && shift && !Repository.empty()) return SelectBranch() ? TRUE : FALSE;
     if (ctrl && key.wVirtualKeyCode == 'F' && !shift && Repository.empty()) return SearchRepositories() ? TRUE : FALSE;
     if (ctrl && key.wVirtualKeyCode == 'B' && !shift && Repository.empty())
@@ -196,7 +198,7 @@ std::wstring FarGitHubPanel::FullPath(const std::wstring& name) const
     return CurrentPath.empty() ? name : CurrentPath + L"/" + name;
 }
 
-intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPERATION_MODES)
+intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPERATION_MODES mode)
 {
     if (!Reload()) { ShowError(); return -1; }
     *count = Entries.size();
@@ -378,7 +380,7 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
     return TRUE;
 }
 
-intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES)
+intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES mode)
 {
     if (!items || !count || !destinationPath || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
@@ -410,7 +412,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         if (move)
         {
             Error.clear();
-            if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return FALSE;
+            if (!DeleteFiles(&items[i], 1, mode | OPM_SILENT)) return FALSE;
         }
         items[i].Flags &= ~PPIF_SELECTED;
     }
@@ -451,7 +453,7 @@ bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring
     return renameEntry(oldPath, newPath);
 }
 
-intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES)
+intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES mode)
 {
     if (!items || !count || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
@@ -470,8 +472,11 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         if (!client.GetFile(path, content, sha, Error)) return false;
         return client.DeleteFile(path, sha, L"Delete " + path, Error);
     };
-    const wchar_t* text[] = { L"GitHub", L"Delete selected item(s)?" };
-    if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
+    if ((mode & OPM_SILENT) == 0)
+    {
+        const wchar_t* text[] = { L"GitHub", L"Delete selected item(s)?" };
+        if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
+    }
     for (size_t i = 0; i < count; ++i)
     {
         if (!removeEntry(FullPath(items[i].FileName))) { ShowError(); return FALSE; }
