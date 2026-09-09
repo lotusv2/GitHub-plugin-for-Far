@@ -207,9 +207,6 @@ intptr_t FarGitHubPanel::ProcessInput(const INPUT_RECORD& record)
         std::wstring name = item->FileName ? item->FileName : L"";
         free(item);
 
-        if (name.size() > 2 && name[0] == L'*' && name[1] == L' ')
-            name.erase(0, 2);
-
         for (const auto& repository : Repositories)
         {
             if (_wcsicmp(repository.Name.c_str(), name.c_str()) == 0)
@@ -250,11 +247,7 @@ intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPE
 
     for (size_t i = 0; i < *count; ++i)
     {
-        std::wstring displayName = Entries[i].Name;
-        if (Repository.empty() && IsFavorite(Entries[i].Sha))
-            displayName = L"* " + displayName;
-
-        result[i].FileName = _wcsdup(displayName.c_str());
+        result[i].FileName = _wcsdup(Entries[i].Name.c_str());
         result[i].FileSize = Entries[i].Size;
         result[i].AllocationSize = Entries[i].Size;
         if (Entries[i].Type == L"dir" || Entries[i].Type == L"repo")
@@ -332,9 +325,6 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
 
     if (Repository.empty())
     {
-        if (dir.size() > 2 && dir[0] == L'*' && dir[1] == L' ')
-            dir.erase(0, 2);
-
         for (const auto& repository : Repositories)
         {
             if (_wcsicmp(repository.Name.c_str(), dir.c_str()) == 0)
