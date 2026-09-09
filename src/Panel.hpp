@@ -17,6 +17,8 @@ public:
     intptr_t ProcessInput(const INPUT_RECORD& record);
     intptr_t MakeDirectory(const wchar_t* name, OPERATION_MODES mode);
     intptr_t PutFiles(PluginPanelItem* items, size_t count, const wchar_t* sourcePath, OPERATION_MODES mode);
+    intptr_t GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES mode);
+    intptr_t DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES mode);
     void ReloadSettings();
 
 private:
@@ -43,5 +45,6 @@ private:
     void UpdatePanel() const;
     std::wstring FullPath(const std::wstring& name) const;
     bool EditFile(const std::wstring& path);
+    bool RenameEntry(const std::wstring& oldPath, const std::wstring& newPath);
     void ShowError(const std::wstring& title = L"GitHub") const;
 };
