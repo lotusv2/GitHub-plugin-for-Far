@@ -9,7 +9,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Фиксируем совместимую с C++17 версию официального заголовка Far Manager Plugin API.
+# Фиксируем версию официального заголовка Far Manager Plugin API и адаптируем
+# один C++20-конструктор до совместимого с C++17 синтаксиса.
 set(FAR_SDK_DIR "${CMAKE_BINARY_DIR}/far-sdk")
 set(FAR_PLUGIN_HPP "${FAR_SDK_DIR}/plugin.hpp")
 file(MAKE_DIRECTORY "${FAR_SDK_DIR}")
@@ -25,6 +26,15 @@ if(NOT EXISTS "${FAR_PLUGIN_HPP}")
     if(NOT FAR_SDK_DOWNLOAD_CODE EQUAL 0)
         message(FATAL_ERROR "Не удалось загрузить plugin.hpp Far Manager")
     endif()
+
+    file(READ "${FAR_PLUGIN_HPP}" FAR_PLUGIN_HPP_CONTENT)
+    string(REPLACE
+        "explicit(false) FarMacroValue"
+        "FarMacroValue"
+        FAR_PLUGIN_HPP_CONTENT
+        "${FAR_PLUGIN_HPP_CONTENT}"
+    )
+    file(WRITE "${FAR_PLUGIN_HPP}" "${FAR_PLUGIN_HPP_CONTENT}")
 endif()
 
 add_library(FarGitHub SHARED
