@@ -134,17 +134,11 @@ intptr_t ProcessRenameInput(FarGitHubPanel* panel)
 
                 for (const auto& child : children)
                 {
-                    const std::wstring childPath = source + L"/" + child.Name;
-                    std::vector<GitHubEntry> grandChildren;
-                    std::wstring probeError;
-                    if (client.GetEntries(childPath, grandChildren, probeError))
+                    // Дочерний каталог уже очищен рекурсивным вызовом.
+                    if (child.Type == L"dir")
                         continue;
-                    if (!IsNotFound(probeError))
-                    {
-                        panel->Error = probeError.empty() ? L"Unable to determine rename source type." : probeError;
-                        return false;
-                    }
 
+                    const std::wstring childPath = source + L"/" + child.Name;
                     std::string content;
                     std::wstring sha;
                     if (!client.GetFile(childPath, content, sha, panel->Error))
