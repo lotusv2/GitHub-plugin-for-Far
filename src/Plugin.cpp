@@ -185,7 +185,8 @@ static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
         return GPluginInfo.DefDlgProc(dialog, message, param1, param2);
     }
 
-    auto* state = static_cast<SettingsDialogState*>(GPluginInfo.SendDlgMessage(dialog, DM_GETDLGDATA, 0, nullptr));
+    const intptr_t dialogData = GPluginInfo.SendDlgMessage(dialog, DM_GETDLGDATA, 0, nullptr);
+    auto* state = reinterpret_cast<SettingsDialogState*>(dialogData);
 
     if (message == DN_BTNCLICK)
     {
