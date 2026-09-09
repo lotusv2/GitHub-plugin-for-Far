@@ -13,5 +13,7 @@ EXPORTS
     ProcessPanelInputW
     MakeDirectoryW
     PutFilesW
+    GetFilesW
+    DeleteFilesW
     ConfigureW
     ExitFARW
