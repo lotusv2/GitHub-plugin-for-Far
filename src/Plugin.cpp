@@ -105,7 +105,7 @@ intptr_t WINAPI ConfigureW(const ConfigureInfo*)
     if (!token.empty())
         lstrcpynW(buffer, token.c_str(), static_cast<int>(std::size(buffer)));
 
-    if (!GPluginInfo.InputBox(MainGuid, MainGuid,
+    if (!GPluginInfo.InputBox(&MainGuid, &MenuGuid,
         L"GitHub for Far", L"GitHub Fine-grained Personal Access Token:",
         L"FarGitHubToken", nullptr, buffer, std::size(buffer), FIB_PASSWORD))
         return FALSE;
