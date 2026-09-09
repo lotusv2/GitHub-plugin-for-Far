@@ -1,7 +1,6 @@
 #include "Plugin.hpp"
 #include "Panel.hpp"
 
-#include <cstdlib>
 #include <memory>
 
 PluginStartupInfo GPluginInfo = {};
@@ -22,7 +21,7 @@ const wchar_t* GetPluginMessage(int)
 void WINAPI GetGlobalInfoW(GlobalInfo* info)
 {
     info->StructSize = sizeof(*info);
-    info->MinFarVersion = { FARMANAGERVERSION_MAJOR, FARMANAGERVERSION_MINOR, FARMANAGERVERSION_REVISION, FARMANAGERVERSION_BUILD, FARMANAGERVERSION_STAGE };
+    info->MinFarVersion = { FARMANAGERVERSION_MAJOR, FARMANAGERVERSION_MINOR, FARMANAGERVERSION_BUILD, FARMANAGERVERSION_REVISION, FARMANAGERVERSION_STAGE };
     info->Version = PluginVersion;
     info->Guid = MainGuid;
     info->Title = PluginTitle.c_str();
@@ -87,6 +86,11 @@ intptr_t WINAPI ProcessHostFileW(const ProcessHostFileInfo* info)
 intptr_t WINAPI MakeDirectoryW(MakeDirectoryInfo* info)
 {
     return static_cast<FarGitHubPanel*>(info->hPanel)->MakeDirectory(info->Name, info->OpMode);
+}
+
+intptr_t WINAPI PutFilesW(const PutFilesInfo* info)
+{
+    return static_cast<FarGitHubPanel*>(info->hPanel)->PutFiles(info->PanelItem, info->ItemsNumber, info->SrcPath, info->OpMode);
 }
 
 intptr_t WINAPI ConfigureW(const ConfigureInfo*)
