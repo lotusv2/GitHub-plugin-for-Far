@@ -160,9 +160,10 @@ bool GitHubSettings::SaveFavorites(const std::vector<std::wstring>& favorites) c
         value += favorite;
     }
 
-    const auto* bytes = reinterpret_cast<const char*>(value.data());
-    const std::string data(bytes, bytes + value.size() * sizeof(wchar_t));
-    if (data.empty())
+    if (value.empty())
         return DeleteData(FavoritesName);
+
+    const auto* bytes = reinterpret_cast<const char*>(value.data());
+    const std::string data(bytes, value.size() * sizeof(wchar_t));
     return SaveData(FavoritesName, data);
 }
