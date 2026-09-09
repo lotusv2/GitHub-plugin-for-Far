@@ -218,7 +218,7 @@ static intptr_t ShowSettingsDialog()
         { DI_PSWEDIT,   2, 2, 67, 2, {}, nullptr, nullptr, 0, token.c_str(), 2047, 0, { 0, 0 } },
         { DI_TEXT,      2, 4, 67, 4, {}, nullptr, nullptr, 0, status.c_str(), 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 6, 67, 6, {}, nullptr, nullptr, 0, L"Test the token before saving it.", 0, 0, { 0, 0 } },
-        { DI_BUTTON,   13, 8, 24, 8, DIF_DEFAULTBUTTON, nullptr, nullptr, 0, L"Test", 0, 0, { 0, 0 } },
+        { DI_BUTTON,   13, 8, 24, 8, {}, nullptr, nullptr, DIF_DEFAULTBUTTON, L"Test", 0, 0, { 0, 0 } },
         { DI_BUTTON,   27, 8, 39, 8, {}, nullptr, nullptr, 0, L"Save", 0, 0, { 0, 0 } },
         { DI_BUTTON,   42, 8, 53, 8, {}, nullptr, nullptr, 0, L"Clear", 0, 0, { 0, 0 } },
         { DI_BUTTON,   56, 8, 65, 8, {}, nullptr, nullptr, 0, L"Cancel", 0, 0, { 0, 0 } }
