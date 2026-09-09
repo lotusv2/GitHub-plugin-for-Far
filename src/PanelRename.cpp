@@ -73,6 +73,27 @@ intptr_t ProcessRenameInput(FarGitHubPanel* panel)
     if (_wcsicmp(oldName.c_str(), newName.c_str()) == 0)
         return TRUE;
 
+    // Не разрешаем переименование поверх существующего объекта.
+    // Иначе рекурсивное перемещение каталога может незаметно объединить два дерева.
+    GitHubClient client(panel->Token, panel->Repository, panel->CurrentBranch);
+    std::vector<GitHubEntry> existingEntries;
+    std::wstring probeError;
+    if (client.GetEntries(newPath, existingEntries, probeError))
+    {
+        panel->Error = L"Destination already exists: " + newName;
+        panel->ShowError(L"Rename");
+        return TRUE;
+    }
+
+    std::string existingContent;
+    std::wstring existingSha;
+    if (client.GetFile(newPath, existingContent, existingSha, probeError))
+    {
+        panel->Error = L"Destination already exists: " + newName;
+        panel->ShowError(L"Rename");
+        return TRUE;
+    }
+
     if (!panel->RenameEntry(oldPath, newPath))
     {
         panel->ShowError(L"Rename");
