@@ -177,7 +177,15 @@ static bool TestDialogToken(HANDLE dialog, std::wstring& token, std::wstring& lo
 
 static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intptr_t param1, void* param2)
 {
-    auto* state = static_cast<SettingsDialogState*>(param2);
+    // Param2 содержит пользовательские данные только для DN_INITDIALOG.
+    // Для остальных сообщений его значение зависит от конкретного события.
+    if (message == DN_INITDIALOG)
+    {
+        GPluginInfo.SendDlgMessage(dialog, DM_SETDLGDATA, 0, param2);
+        return GPluginInfo.DefDlgProc(dialog, message, param1, param2);
+    }
+
+    auto* state = static_cast<SettingsDialogState*>(GPluginInfo.SendDlgMessage(dialog, DM_GETDLGDATA, 0, nullptr));
 
     if (message == DN_BTNCLICK)
     {
@@ -191,6 +199,12 @@ static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
 
         if (param1 == SDI_CLEAR)
         {
+            if (!state)
+            {
+                SetDialogStatus(dialog, L"Settings state is unavailable.");
+                return TRUE;
+            }
+
             if (state->Settings.ClearToken())
             {
                 const wchar_t* empty = L"";
@@ -208,6 +222,12 @@ static intptr_t WINAPI SettingsDialogProc(HANDLE dialog, intptr_t message, intpt
 
         if (param1 == SDI_SAVE)
         {
+            if (!state)
+            {
+                SetDialogStatus(dialog, L"Settings state is unavailable.");
+                return TRUE;
+            }
+
             std::wstring token;
             std::wstring login;
             if (!TestDialogToken(dialog, token, login))
@@ -245,7 +265,7 @@ static intptr_t ShowSettingsDialog()
         { DI_TEXT,      2, 4, 67, 4, {}, nullptr, nullptr, 0, status.c_str(), 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 6, 67, 6, {}, nullptr, nullptr, 0, L"Test the token before saving it.", 0, 0, { 0, 0 } },
         { DI_BUTTON,   13, 8, 24, 8, {}, nullptr, nullptr, DIF_DEFAULTBUTTON, L"Test", 0, 0, { 0, 0 } },
-        { DI_BUTTON,   27, 8, 39, 8, {}, nullptr, nullptr, 0, L"Save", 0, 0, { 0, 0 } },
+        { DI_BUTTON,   27, 8, 39, 8, {}, nullptr, nullptr, 0, L"Save", 0, 0, { 0, 0 }, },
         { DI_BUTTON,   42, 8, 53, 8, {}, nullptr, nullptr, 0, L"Clear", 0, 0, { 0, 0 } },
         { DI_BUTTON,   56, 8, 65, 8, {}, nullptr, nullptr, 0, L"Cancel", 0, 0, { 0, 0 } }
     };
