@@ -4,6 +4,7 @@
 #include "Settings.hpp"
 
 #include <memory>
+#include <iterator>
 
 PluginStartupInfo GPluginInfo = {};
 FarStandardFunctions GFarFunctions = {};
