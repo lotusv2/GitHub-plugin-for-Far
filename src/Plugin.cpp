@@ -1,5 +1,7 @@
 #include "Plugin.hpp"
 #include "Panel.hpp"
+#include "GitHubClient.hpp"
+#include "Settings.hpp"
 
 #include <memory>
 
@@ -9,7 +11,7 @@ FarStandardFunctions GFarFunctions = {};
 const GUID MainGuid = { 0x7f0d7c51, 0x6e8a, 0x4c2a, { 0x9d, 0x53, 0x41, 0x1b, 0x2a, 0x9c, 0x8e, 0x10 } };
 const GUID MenuGuid = { 0x5b7b4c22, 0x6f0f, 0x4b13, { 0xa0, 0x14, 0x91, 0x34, 0x12, 0x88, 0x51, 0x20 } };
 
-static constexpr VersionInfo PluginVersion = { 0, 1, 0, 0, VS_PRIVATE };
+static constexpr VersionInfo PluginVersion = { 0, 2, 0, 0, VS_PRIVATE };
 static std::wstring PluginTitle = L"GitHub for Far";
 static std::unique_ptr<FarGitHubPanel> ActivePanel;
 
@@ -95,8 +97,48 @@ intptr_t WINAPI PutFilesW(const PutFilesInfo* info)
 
 intptr_t WINAPI ConfigureW(const ConfigureInfo*)
 {
-    const wchar_t* text[] = { L"GitHub for Far", L"Configuration is currently controlled by environment variables:", L"FAR_GITHUB_TOKEN", L"FAR_GITHUB_REPOSITORY" };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_LEFTALIGN | FMSG_MB_OK, nullptr, text, 4, 1);
+    GitHubSettings settings;
+    std::wstring token;
+    settings.LoadToken(token);
+
+    wchar_t buffer[2048] = {};
+    if (!token.empty())
+        lstrcpynW(buffer, token.c_str(), static_cast<int>(std::size(buffer)));
+
+    if (!GPluginInfo.InputBox(MainGuid, MainGuid,
+        L"GitHub for Far", L"GitHub Fine-grained Personal Access Token:",
+        L"FarGitHubToken", nullptr, buffer, std::size(buffer), FIB_PASSWORD))
+        return FALSE;
+
+    const std::wstring newToken(buffer);
+    if (newToken.empty())
+    {
+        settings.ClearToken();
+        const wchar_t* text[] = { L"GitHub for Far", L"GitHub token removed." };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_LEFTALIGN | FMSG_MB_OK, nullptr, text, 2, 1);
+        return TRUE;
+    }
+
+    GitHubClient client(newToken);
+    std::wstring login;
+    std::wstring error;
+    if (!client.TestConnection(login, error))
+    {
+        const wchar_t* text[] = { L"GitHub for Far", L"Connection test failed:", error.c_str() };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, text, 3, 1);
+        return FALSE;
+    }
+
+    if (!settings.SaveToken(newToken))
+    {
+        const wchar_t* text[] = { L"GitHub for Far", L"Unable to save the encrypted token." };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, text, 2, 1);
+        return FALSE;
+    }
+
+    const std::wstring status = L"Connected as " + login + L". Token saved securely with Windows DPAPI.";
+    const wchar_t* text[] = { L"GitHub for Far", status.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_LEFTALIGN | FMSG_MB_OK, nullptr, text, 2, 1);
     return TRUE;
 }
 
