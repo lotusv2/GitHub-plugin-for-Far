@@ -28,7 +28,7 @@ std::wstring GitHubClient::Wide(const std::string& value)
     if (value.empty()) return {};
     int size = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
     std::wstring result(size, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size);
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), size, result.data(), size);
     return result;
 }
 
@@ -53,19 +53,36 @@ std::wstring GitHubClient::UrlPath(const std::wstring& value)
 
 bool GitHubClient::Request(const std::wstring& method, const std::wstring& path, const std::string& body, std::string& response, std::wstring& error)
 {
-    HINTERNET session = WinHttpOpen(L"GitHub-plugin-for-Far/0.2", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
+    HINTERNET session = WinHttpOpen(L"GitHub-plugin-for-Far/0.2.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!session) { error = L"WinHttpOpen failed"; return false; }
+
+    // Ограничиваем время сетевых операций, чтобы зависший GitHub не блокировал Far Manager.
+    WinHttpSetTimeouts(session, 10000, 10000, 15000, 30000);
+
     HINTERNET connect = WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!connect) { error = L"WinHttpConnect failed"; WinHttpCloseHandle(session); return false; }
     HINTERNET request = WinHttpOpenRequest(connect, method.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
-    if (!request) { error = L"WinHttpOpenRequest failed"; WinHttpCloseHandle(connect); WinHttpCloseHandle(session); return false; }
+    if (!request)
+    {
+        error = L"WinHttpOpenRequest failed";
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        return false;
+    }
 
     std::wstring headers = L"Accept: application/vnd.github+json\r\nUser-Agent: GitHub-plugin-for-Far\r\nContent-Type: application/json\r\n";
     if (!Token.empty()) headers += L"Authorization: Bearer " + Token + L"\r\n";
     BOOL ok = WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1L),
         body.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char*>(body.data()), static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0);
     if (ok) ok = WinHttpReceiveResponse(request, nullptr);
-    if (!ok) { error = L"GitHub HTTP request failed"; WinHttpCloseHandle(request); WinHttpCloseHandle(connect); WinHttpCloseHandle(session); return false; }
+    if (!ok)
+    {
+        error = L"GitHub HTTP request failed";
+        WinHttpCloseHandle(request);
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        return false;
+    }
 
     DWORD status = 0, statusSize = sizeof(status);
     WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &statusSize, nullptr);
@@ -79,9 +96,11 @@ bool GitHubClient::Request(const std::wstring& method, const std::wstring& path,
         if (!WinHttpReadData(request, buffer, chunk, &read) || !read) break;
         response.append(buffer, read);
     }
+
     WinHttpCloseHandle(request);
     WinHttpCloseHandle(connect);
     WinHttpCloseHandle(session);
+
     if (status < 200 || status >= 300)
     {
         const std::wstring message = JsonString(response, "message");
@@ -204,17 +223,29 @@ bool GitHubClient::TestConnection(std::wstring& login, std::wstring& error)
 bool GitHubClient::GetRepositories(std::vector<GitHubRepository>& repositories, std::wstring& error)
 {
     repositories.clear();
-    std::string response;
-    if (!Request(L"GET", L"/user/repos?per_page=100&sort=full_name", {}, response, error)) return false;
 
-    for (const std::string& object : JsonObjects(response))
+    // GitHub возвращает максимум 100 репозиториев за запрос, поэтому загружаем все страницы.
+    for (unsigned int page = 1; ; ++page)
     {
-        GitHubRepository repository;
-        repository.Name = JsonString(object, "name");
-        repository.FullName = JsonString(object, "full_name");
-        repository.DefaultBranch = JsonString(object, "default_branch");
-        if (!repository.Name.empty() && !repository.FullName.empty())
-            repositories.push_back(repository);
+        std::string response;
+        const std::wstring api = L"/user/repos?per_page=100&sort=full_name&page=" + std::to_wstring(page);
+        if (!Request(L"GET", api, {}, response, error)) return false;
+
+        const std::vector<std::string> objects = JsonObjects(response);
+        if (objects.empty()) break;
+
+        for (const std::string& object : objects)
+        {
+            GitHubRepository repository;
+            repository.Name = JsonString(object, "name");
+            repository.FullName = JsonString(object, "full_name");
+            repository.DefaultBranch = JsonString(object, "default_branch");
+            if (!repository.Name.empty() && !repository.FullName.empty())
+                repositories.push_back(repository);
+        }
+
+        if (objects.size() < 100)
+            break;
     }
     return true;
 }
