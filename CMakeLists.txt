@@ -9,8 +9,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Фиксируем версию официального заголовка Far Manager Plugin API и адаптируем
-# один C++20-конструктор до совместимого с C++17 синтаксиса.
+# Фиксируем версию официального заголовка Far Manager Plugin API.
+# Официальный plugin.hpp по умолчанию включает FAR_USE_INTERNALS,
+# поэтому отключаем этот режим для внешнего плагина.
 set(FAR_SDK_DIR "${CMAKE_BINARY_DIR}/far-sdk")
 set(FAR_PLUGIN_HPP "${FAR_SDK_DIR}/plugin.hpp")
 file(MAKE_DIRECTORY "${FAR_SDK_DIR}")
@@ -29,8 +30,8 @@ if(NOT EXISTS "${FAR_PLUGIN_HPP}")
 
     file(READ "${FAR_PLUGIN_HPP}" FAR_PLUGIN_HPP_CONTENT)
     string(REPLACE
-        "explicit(false) FarMacroValue"
-        "FarMacroValue"
+        "#ifndef FAR_USE_INTERNALS\n#define FAR_USE_INTERNALS\n#endif // END FAR_USE_INTERNALS"
+        "#undef FAR_USE_INTERNALS"
         FAR_PLUGIN_HPP_CONTENT
         "${FAR_PLUGIN_HPP_CONTENT}"
     )
