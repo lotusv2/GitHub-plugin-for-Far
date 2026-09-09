@@ -204,7 +204,7 @@ intptr_t FarGitHubPanel::ProcessInput(const INPUT_RECORD& record)
             return FALSE;
         }
 
-        std::wstring name = item->FileName ? item->FileName : L"";
+        const std::wstring name = item->FileName ? item->FileName : L"";
         free(item);
 
         for (const auto& repository : Repositories)
@@ -253,6 +253,17 @@ intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPE
         if (Entries[i].Type == L"dir" || Entries[i].Type == L"repo")
             result[i].FileAttributes = FILE_ATTRIBUTE_DIRECTORY;
         result[i].UserData.Data = _wcsdup(Entries[i].Sha.c_str());
+
+        if (Repository.empty())
+        {
+            auto** columns = static_cast<const wchar_t**>(calloc(1, sizeof(const wchar_t*)));
+            if (columns)
+            {
+                columns[0] = _wcsdup(IsFavorite(Entries[i].Sha) ? L"*" : L"");
+                result[i].CustomColumnData = columns;
+                result[i].CustomColumnNumber = 1;
+            }
+        }
     }
     *items = result;
     return 0;
@@ -265,6 +276,13 @@ void FarGitHubPanel::FreeFindData(PluginPanelItem* items, size_t count)
     {
         free(const_cast<wchar_t*>(items[i].FileName));
         free(items[i].UserData.Data);
+
+        if (items[i].CustomColumnData)
+        {
+            for (size_t j = 0; j < items[i].CustomColumnNumber; ++j)
+                free(const_cast<wchar_t*>(items[i].CustomColumnData[j]));
+            free(const_cast<wchar_t**>(items[i].CustomColumnData));
+        }
     }
     free(items);
 }
@@ -280,14 +298,15 @@ void FarGitHubPanel::GetOpenPanelInfo(OpenPanelInfo* info)
     {
         info->HostFile = L"GitHub";
         title = SearchText.empty() ? L"GitHub repositories" : L"GitHub repositories: " + SearchText;
+        info->Format = L"N,C0";
     }
     else
     {
         info->HostFile = Repository.c_str();
         title = L"GitHub: " + Repository;
+        info->Format = L"N";
     }
     info->PanelTitle = title.c_str();
-    info->Format = L"gh";
 }
 
 intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
