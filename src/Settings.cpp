@@ -10,6 +10,7 @@
 namespace
 {
 const wchar_t* TokenName = L"Token";
+const wchar_t* FavoritesName = L"Favorites";
 }
 
 bool GitHubSettings::Protect(const std::wstring& value, std::string& data) const
@@ -51,9 +52,9 @@ bool GitHubSettings::Unprotect(const std::string& data, std::wstring& value) con
     return true;
 }
 
-bool GitHubSettings::LoadToken(std::wstring& token) const
+bool GitHubSettings::LoadData(const wchar_t* name, std::string& data) const
 {
-    token.clear();
+    data.clear();
     if (!GPluginInfo.SettingsControl)
         return false;
 
@@ -61,38 +62,33 @@ bool GitHubSettings::LoadToken(std::wstring& token) const
     if (!GPluginInfo.SettingsControl(INVALID_HANDLE_VALUE, SCTL_CREATE, 0, &create))
         return false;
 
-    FarSettingsItem item = { sizeof(item), 0, TokenName, FST_DATA, {} };
+    FarSettingsItem item = { sizeof(item), 0, name, FST_DATA, {} };
     const bool ok = GPluginInfo.SettingsControl(create.Handle, SCTL_GET, 0, &item) != FALSE;
-    std::string encrypted;
     if (ok && item.Type == FST_DATA && item.Data.Data && item.Data.Size)
-        encrypted.assign(reinterpret_cast<const char*>(item.Data.Data), item.Data.Size);
+        data.assign(reinterpret_cast<const char*>(item.Data.Data), item.Data.Size);
 
     GPluginInfo.SettingsControl(create.Handle, SCTL_FREE, 0, nullptr);
-    return ok && Unprotect(encrypted, token);
+    return ok;
 }
 
-bool GitHubSettings::SaveToken(const std::wstring& token) const
+bool GitHubSettings::SaveData(const wchar_t* name, const std::string& data) const
 {
     if (!GPluginInfo.SettingsControl)
-        return false;
-
-    std::string encrypted;
-    if (!Protect(token, encrypted))
         return false;
 
     FarSettingsCreate create = { sizeof(create), MainGuid, INVALID_HANDLE_VALUE };
     if (!GPluginInfo.SettingsControl(INVALID_HANDLE_VALUE, SCTL_CREATE, 0, &create))
         return false;
 
-    FarSettingsItem item = { sizeof(item), 0, TokenName, FST_DATA, {} };
-    item.Data.Size = encrypted.size();
-    item.Data.Data = encrypted.data();
+    FarSettingsItem item = { sizeof(item), 0, name, FST_DATA, {} };
+    item.Data.Size = data.size();
+    item.Data.Data = const_cast<char*>(data.data());
     const bool ok = GPluginInfo.SettingsControl(create.Handle, SCTL_SET, 0, &item) != FALSE;
     GPluginInfo.SettingsControl(create.Handle, SCTL_FREE, 0, nullptr);
     return ok;
 }
 
-bool GitHubSettings::ClearToken() const
+bool GitHubSettings::DeleteData(const wchar_t* name) const
 {
     if (!GPluginInfo.SettingsControl)
         return false;
@@ -101,8 +97,72 @@ bool GitHubSettings::ClearToken() const
     if (!GPluginInfo.SettingsControl(INVALID_HANDLE_VALUE, SCTL_CREATE, 0, &create))
         return false;
 
-    FarSettingsValue value = { sizeof(value), 0, TokenName };
+    FarSettingsValue value = { sizeof(value), 0, name };
     const bool ok = GPluginInfo.SettingsControl(create.Handle, SCTL_DELETE, 0, &value) != FALSE;
     GPluginInfo.SettingsControl(create.Handle, SCTL_FREE, 0, nullptr);
     return ok;
+}
+
+bool GitHubSettings::LoadToken(std::wstring& token) const
+{
+    token.clear();
+    std::string encrypted;
+    if (!LoadData(TokenName, encrypted))
+        return false;
+    return Unprotect(encrypted, token);
+}
+
+bool GitHubSettings::SaveToken(const std::wstring& token) const
+{
+    std::string encrypted;
+    if (!Protect(token, encrypted))
+        return false;
+    return SaveData(TokenName, encrypted);
+}
+
+bool GitHubSettings::ClearToken() const
+{
+    return DeleteData(TokenName);
+}
+
+bool GitHubSettings::LoadFavorites(std::vector<std::wstring>& favorites) const
+{
+    favorites.clear();
+    std::string data;
+    if (!LoadData(FavoritesName, data) || data.empty())
+        return true;
+
+    if (data.size() % sizeof(wchar_t) != 0)
+        return false;
+
+    const auto* values = reinterpret_cast<const wchar_t*>(data.data());
+    const size_t count = data.size() / sizeof(wchar_t);
+    size_t start = 0;
+    for (size_t i = 0; i <= count; ++i)
+    {
+        if (i != count && values[i] != L'\n')
+            continue;
+
+        if (i > start)
+            favorites.emplace_back(values + start, i - start);
+        start = i + 1;
+    }
+    return true;
+}
+
+bool GitHubSettings::SaveFavorites(const std::vector<std::wstring>& favorites) const
+{
+    std::wstring value;
+    for (const auto& favorite : favorites)
+    {
+        if (!value.empty())
+            value += L'\n';
+        value += favorite;
+    }
+
+    const auto* bytes = reinterpret_cast<const char*>(value.data());
+    const std::string data(bytes, bytes + value.size() * sizeof(wchar_t));
+    if (data.empty())
+        return DeleteData(FavoritesName);
+    return SaveData(FavoritesName, data);
 }

@@ -10,6 +10,8 @@ EXPORTS
     GetOpenPanelInfoW
     SetDirectoryW
     ProcessHostFileW
+    ProcessPanelInputW
     MakeDirectoryW
+    PutFilesW
     ConfigureW
     ExitFARW
