@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FarGitHub VERSION 0.1.0 LANGUAGES CXX RC)
+project(FarGitHub VERSION 0.2.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "FarGitHub is a Windows Far Manager plugin")
@@ -36,13 +36,15 @@ add_library(FarGitHub SHARED
     src/GitHubClient.hpp
     src/Panel.cpp
     src/Panel.hpp
+    src/Settings.cpp
+    src/Settings.hpp
     src/resource.rc
     src/FarGitHub.def
 )
 
 target_compile_definitions(FarGitHub PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(FarGitHub PRIVATE /W4 /EHsc)
-target_link_libraries(FarGitHub PRIVATE winhttp)
+target_link_libraries(FarGitHub PRIVATE winhttp crypt32)
 
 target_include_directories(FarGitHub PRIVATE
     ${FAR_SDK_DIR}
