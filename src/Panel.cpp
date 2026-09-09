@@ -8,8 +8,14 @@
 
 FarGitHubPanel::FarGitHubPanel()
 {
+    ReloadSettings();
+}
+
+void FarGitHubPanel::ReloadSettings()
+{
     GitHubSettings settings;
     settings.LoadToken(Token);
+    Error.clear();
     Reload();
 }
 
