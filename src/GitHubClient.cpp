@@ -115,10 +115,7 @@ std::wstring GitHubClient::JsonString(const std::string& json, const std::string
                 case 't': value += '\t'; break;
                 case 'b': value += '\b'; break;
                 case 'f': value += '\f'; break;
-                case 'u':
-                    // GitHub API normally returns UTF-8 directly; preserve unknown escapes safely.
-                    value += 'u';
-                    break;
+                case 'u': value += 'u'; break;
                 default: value += c; break;
             }
             escape = false;
@@ -301,7 +298,7 @@ bool GitHubClient::PutFile(const std::wstring& path, const std::string& content,
     return Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);
 }
 
-bool GitHubClient::CreateDirectory(const std::wstring& path, const std::wstring& message, std::wstring& error)
+bool GitHubClient::CreateDirectoryEntry(const std::wstring& path, const std::wstring& message, std::wstring& error)
 {
     return PutFile(path + L"/.gitkeep", {}, {}, message, error);
 }
