@@ -14,6 +14,7 @@ public:
     intptr_t SetDirectory(const wchar_t* directory, OPERATION_MODES mode);
     intptr_t ProcessHostFile(PluginPanelItem* items, size_t count, OPERATION_MODES mode);
     intptr_t MakeDirectory(const wchar_t* name, OPERATION_MODES mode);
+    intptr_t PutFiles(PluginPanelItem* items, size_t count, const wchar_t* sourcePath, OPERATION_MODES mode);
 
 private:
     std::wstring Token;
