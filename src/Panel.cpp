@@ -40,13 +40,11 @@ intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPE
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_OK, nullptr, text, 2, 1);
         return -1;
     }
-
     *count = Entries.size();
     if (!*count) { *items = nullptr; return 0; }
 
     auto* result = static_cast<PluginPanelItem*>(calloc(*count, sizeof(PluginPanelItem)));
     if (!result) return -1;
-
     for (size_t i = 0; i < *count; ++i)
     {
         result[i].FileName = _wcsdup(Entries[i].Name.c_str());
@@ -143,9 +141,9 @@ bool FarGitHubPanel::EditFile(const std::wstring& path)
 
 intptr_t FarGitHubPanel::ProcessHostFile(PluginPanelItem* items, size_t count, OPERATION_MODES)
 {
-    if (!items || count == 0) return -1;
-    if (items[0].FileAttributes & FILE_ATTRIBUTE_DIRECTORY) return -1;
-    return EditFile(FullPath(items[0].FileName)) ? TRUE : -1;
+    if (!items || count == 0) return 0;
+    if (items[0].FileAttributes & FILE_ATTRIBUTE_DIRECTORY) return 0;
+    return EditFile(FullPath(items[0].FileName)) ? TRUE : FALSE;
 }
 
 intptr_t FarGitHubPanel::MakeDirectory(const wchar_t* name, OPERATION_MODES)
@@ -158,6 +156,33 @@ intptr_t FarGitHubPanel::MakeDirectory(const wchar_t* name, OPERATION_MODES)
         const wchar_t* text[] = { L"GitHub", error.c_str() };
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, text, 2, 1);
         return FALSE;
+    }
+    Reload();
+    return TRUE;
+}
+
+intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wchar_t* sourcePath, OPERATION_MODES)
+{
+    if (!items || !count || !sourcePath) return FALSE;
+    GitHubClient client(Token, Repository);
+    for (size_t i = 0; i < count; ++i)
+    {
+        std::wstring local = std::wstring(sourcePath) + items[i].FileName;
+        std::ifstream file(local, std::ios::binary);
+        if (!file) return FALSE;
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+        std::wstring error;
+        std::wstring remote = FullPath(items[i].FileName);
+        std::wstring sha;
+        std::string oldContent;
+        client.GetFile(remote, oldContent, sha, error);
+        if (!client.PutFile(remote, content, sha, L"Upload " + std::wstring(items[i].FileName), error))
+        {
+            const wchar_t* text[] = { L"GitHub", error.c_str() };
+            GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, text, 2, 1);
+            return FALSE;
+        }
     }
     Reload();
     return TRUE;
