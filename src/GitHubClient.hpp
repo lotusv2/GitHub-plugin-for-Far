@@ -29,7 +29,7 @@ public:
     bool GetEntries(const std::wstring& path, std::vector<GitHubEntry>& entries, std::wstring& error);
     bool GetFile(const std::wstring& path, std::string& content, std::wstring& sha, std::wstring& error);
     bool PutFile(const std::wstring& path, const std::string& content, const std::wstring& sha, const std::wstring& message, std::wstring& error);
-    bool CreateDirectory(const std::wstring& path, const std::wstring& message, std::wstring& error);
+    bool CreateDirectoryEntry(const std::wstring& path, const std::wstring& message, std::wstring& error);
 
 private:
     std::wstring Token;
