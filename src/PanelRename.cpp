@@ -84,12 +84,24 @@ intptr_t ProcessRenameInput(FarGitHubPanel* panel)
         panel->ShowError(L"Rename");
         return TRUE;
     }
+    if (probeError.find(L"HTTP 404") == std::wstring::npos)
+    {
+        panel->Error = probeError.empty() ? L"Unable to check rename destination." : probeError;
+        panel->ShowError(L"Rename");
+        return TRUE;
+    }
 
     std::string existingContent;
     std::wstring existingSha;
     if (client.GetFile(newPath, existingContent, existingSha, probeError))
     {
         panel->Error = L"Destination already exists: " + newName;
+        panel->ShowError(L"Rename");
+        return TRUE;
+    }
+    if (probeError.find(L"HTTP 404") == std::wstring::npos)
+    {
+        panel->Error = probeError.empty() ? L"Unable to check rename destination." : probeError;
         panel->ShowError(L"Rename");
         return TRUE;
     }
