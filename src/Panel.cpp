@@ -11,6 +11,7 @@
 namespace
 {
 const GUID SearchDialogGuid = { 0x7a5f3c21, 0x6b4d, 0x4f92, { 0x8c, 0x31, 0x45, 0x72, 0x9a, 0x16, 0x3e, 0x54 } };
+const GUID BranchMenuGuid = { 0x6d8b2a14, 0x4f31, 0x47c6, { 0x91, 0x28, 0x5a, 0x73, 0xb4, 0x0c, 0x2e, 0x61 } };
 
 bool ContainsInsensitive(const std::wstring& value, const std::wstring& query)
 {
@@ -118,6 +119,18 @@ bool FarGitHubPanel::ReloadRepositories()
     return true;
 }
 
+bool FarGitHubPanel::ReloadBranches()
+{
+    Branches.clear();
+    if (Repository.empty())
+        return false;
+
+    GitHubClient client(Token, Repository);
+    if (!client.GetBranches(Branches, Error))
+        return false;
+    return true;
+}
+
 bool FarGitHubPanel::Reload()
 {
     if (Repository.empty())
@@ -130,7 +143,7 @@ bool FarGitHubPanel::Reload()
         return false;
     }
 
-    GitHubClient client(Token, Repository);
+    GitHubClient client(Token, Repository, CurrentBranch);
     return client.GetEntries(CurrentPath, Entries, Error);
 }
 
@@ -173,20 +186,87 @@ bool FarGitHubPanel::SearchRepositories()
     return true;
 }
 
+bool FarGitHubPanel::SelectBranch()
+{
+    if (Repository.empty())
+        return false;
+
+    if (!ReloadBranches())
+    {
+        ShowError();
+        return false;
+    }
+    if (Branches.empty())
+    {
+        Error = L"No branches found.";
+        ShowError();
+        return false;
+    }
+
+    std::vector<std::wstring> labels;
+    std::vector<FarMenuItem> items(Branches.size());
+    labels.reserve(Branches.size());
+
+    for (size_t i = 0; i < Branches.size(); ++i)
+    {
+        labels.push_back(Branches[i].Name + (Branches[i].Protected ? L" [protected]" : L""));
+        items[i] = {};
+        items[i].Flags = Branches[i].Name == CurrentBranch ? MIF_SELECTED : MIF_NONE;
+        items[i].Text = labels.back().c_str();
+    }
+
+    const intptr_t selected = GPluginInfo.Menu(
+        &MainGuid,
+        &BranchMenuGuid,
+        -1,
+        -1,
+        0,
+        FMENU_AUTOHIGHLIGHT,
+        L"GitHub branches",
+        L"Ctrl+Shift+B",
+        nullptr,
+        nullptr,
+        nullptr,
+        items.data(),
+        items.size());
+
+    if (selected < 0 || static_cast<size_t>(selected) >= Branches.size())
+        return false;
+
+    const std::wstring branch = Branches[static_cast<size_t>(selected)].Name;
+    if (branch == CurrentBranch)
+        return false;
+
+    CurrentBranch = branch;
+    CurrentPath.clear();
+    if (!Reload())
+    {
+        ShowError();
+        return false;
+    }
+    UpdatePanel();
+    return true;
+}
+
 intptr_t FarGitHubPanel::ProcessInput(const INPUT_RECORD& record)
 {
     if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
         return FALSE;
 
     const auto& key = record.Event.KeyEvent;
-    const DWORD modifiers = key.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED);
-    if (modifiers == 0)
+    const DWORD state = key.dwControlKeyState;
+    const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
+    const bool shift = (state & SHIFT_PRESSED) != 0;
+    if (!ctrl)
         return FALSE;
 
-    if (key.wVirtualKeyCode == 'F' && Repository.empty())
+    if (key.wVirtualKeyCode == 'B' && shift && !Repository.empty())
+        return SelectBranch() ? TRUE : FALSE;
+
+    if (key.wVirtualKeyCode == 'F' && !shift && Repository.empty())
         return SearchRepositories() ? TRUE : FALSE;
 
-    if (key.wVirtualKeyCode == 'B' && Repository.empty())
+    if (key.wVirtualKeyCode == 'B' && !shift && Repository.empty())
     {
         const size_t size = static_cast<size_t>(GPluginInfo.PanelControl(PANEL_ACTIVE, FCTL_GETCURRENTPANELITEM, 0, nullptr));
         if (!size)
@@ -303,7 +383,7 @@ void FarGitHubPanel::GetOpenPanelInfo(OpenPanelInfo* info)
     else
     {
         info->HostFile = Repository.c_str();
-        title = L"GitHub: " + Repository;
+        title = L"GitHub: " + Repository + L" [" + CurrentBranch + L"]";
         info->Format = L"N";
     }
     info->PanelTitle = title.c_str();
@@ -319,7 +399,10 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
         if (!Repository.empty())
         {
             Repository.clear();
+            CurrentBranch.clear();
+            DefaultBranch.clear();
             CurrentPath.clear();
+            Branches.clear();
             return Reload() ? TRUE : FALSE;
         }
         CurrentPath.clear();
@@ -337,6 +420,9 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
         if (!Repository.empty())
         {
             Repository.clear();
+            CurrentBranch.clear();
+            DefaultBranch.clear();
+            Branches.clear();
             return Reload() ? TRUE : FALSE;
         }
         return TRUE;
@@ -349,7 +435,17 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
             if (_wcsicmp(repository.Name.c_str(), dir.c_str()) == 0)
             {
                 Repository = repository.FullName;
+                DefaultBranch = repository.DefaultBranch;
+                CurrentBranch = DefaultBranch;
                 CurrentPath.clear();
+                if (!ReloadBranches())
+                {
+                    Repository.clear();
+                    CurrentBranch.clear();
+                    DefaultBranch.clear();
+                    ShowError();
+                    return FALSE;
+                }
                 return Reload() ? TRUE : FALSE;
             }
         }
@@ -365,7 +461,7 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
 
 bool FarGitHubPanel::EditFile(const std::wstring& path)
 {
-    GitHubClient client(Token, Repository);
+    GitHubClient client(Token, Repository, CurrentBranch);
     std::string content;
     std::wstring sha;
     if (!client.GetFile(path, content, sha, Error))
@@ -424,7 +520,7 @@ intptr_t FarGitHubPanel::MakeDirectory(const wchar_t* name, OPERATION_MODES)
 {
     if (!name || !*name || Repository.empty()) return FALSE;
 
-    GitHubClient client(Token, Repository);
+    GitHubClient client(Token, Repository, CurrentBranch);
     if (!client.CreateDirectoryEntry(FullPath(name), L"Create directory " + std::wstring(name), Error))
     {
         ShowError();
@@ -438,7 +534,7 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
 {
     if (!items || !count || !sourcePath || Repository.empty()) return FALSE;
 
-    GitHubClient client(Token, Repository);
+    GitHubClient client(Token, Repository, CurrentBranch);
     for (size_t i = 0; i < count; ++i)
     {
         if (items[i].FileAttributes & FILE_ATTRIBUTE_DIRECTORY)

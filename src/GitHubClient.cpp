@@ -14,6 +14,9 @@ GitHubClient::GitHubClient(const std::wstring& token)
 GitHubClient::GitHubClient(const std::wstring& token, const std::wstring& repository)
     : Token(token), Repository(repository) {}
 
+GitHubClient::GitHubClient(const std::wstring& token, const std::wstring& repository, const std::wstring& branch)
+    : Token(token), Repository(repository), Branch(branch) {}
+
 std::string GitHubClient::Utf8(const std::wstring& value)
 {
     if (value.empty()) return {};
@@ -53,7 +56,7 @@ std::wstring GitHubClient::UrlPath(const std::wstring& value)
 
 bool GitHubClient::Request(const std::wstring& method, const std::wstring& path, const std::string& body, std::string& response, std::wstring& error)
 {
-    HINTERNET session = WinHttpOpen(L"GitHub-plugin-for-Far/0.2.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
+    HINTERNET session = WinHttpOpen(L"GitHub-plugin-for-Far/0.4.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
     if (!session) { error = L"WinHttpOpen failed"; return false; }
 
     // Ограничиваем время сетевых операций, чтобы зависший GitHub не блокировал Far Manager.
@@ -157,6 +160,16 @@ unsigned long long GitHubClient::JsonNumber(const std::string& json, const std::
     return _strtoui64(json.c_str() + p, nullptr, 10);
 }
 
+bool GitHubClient::JsonBool(const std::string& json, const std::string& key)
+{
+    const std::string marker = "\"" + key + "\"";
+    size_t p = json.find(marker);
+    if (p == std::string::npos) return false;
+    p += marker.size();
+    while (p < json.size() && (std::isspace(static_cast<unsigned char>(json[p])) || json[p] == ':')) ++p;
+    return json.compare(p, 4, "true") == 0;
+}
+
 std::string GitHubClient::JsonEscape(const std::string& value)
 {
     std::string result;
@@ -250,12 +263,48 @@ bool GitHubClient::GetRepositories(std::vector<GitHubRepository>& repositories, 
     return true;
 }
 
+bool GitHubClient::GetBranches(std::vector<GitHubBranch>& branches, std::wstring& error)
+{
+    branches.clear();
+    if (Repository.empty()) { error = L"Repository is not selected"; return false; }
+
+    for (unsigned int page = 1; ; ++page)
+    {
+        std::string response;
+        const std::wstring api = L"/repos/" + Repository + L"/branches?per_page=100&page=" + std::to_wstring(page);
+        if (!Request(L"GET", api, {}, response, error)) return false;
+
+        const std::vector<std::string> objects = JsonObjects(response);
+        if (objects.empty()) break;
+
+        for (const std::string& object : objects)
+        {
+            GitHubBranch branch;
+            branch.Name = JsonString(object, "name");
+            branch.Protected = JsonBool(object, "protected");
+            const std::string commitObject = object.substr(object.find("\"commit\"") == std::string::npos ? object.size() : object.find("\"commit\""));
+            branch.Sha = JsonString(commitObject, "sha");
+            if (!branch.Name.empty()) branches.push_back(branch);
+        }
+
+        if (objects.size() < 100)
+            break;
+    }
+
+    std::sort(branches.begin(), branches.end(), [](const GitHubBranch& left, const GitHubBranch& right)
+    {
+        return _wcsicmp(left.Name.c_str(), right.Name.c_str()) < 0;
+    });
+    return true;
+}
+
 bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>& entries, std::wstring& error)
 {
     entries.clear();
     if (Repository.empty()) { error = L"Repository is not selected"; return false; }
     std::wstring api = L"/repos/" + Repository + L"/contents";
     if (!path.empty()) api += L"/" + UrlPath(path);
+    if (!Branch.empty()) api += L"?ref=" + UrlPath(Branch);
     std::string response;
     if (!Request(L"GET", api, {}, response, error)) return false;
 
@@ -314,8 +363,10 @@ std::string GitHubClient::Base64Encode(const std::string& data)
 
 bool GitHubClient::GetFile(const std::wstring& path, std::string& content, std::wstring& sha, std::wstring& error)
 {
+    std::wstring api = L"/repos/" + Repository + L"/contents/" + UrlPath(path);
+    if (!Branch.empty()) api += L"?ref=" + UrlPath(Branch);
     std::string response;
-    if (!Request(L"GET", L"/repos/" + Repository + L"/contents/" + UrlPath(path), {}, response, error)) return false;
+    if (!Request(L"GET", api, {}, response, error)) return false;
     sha = JsonString(response, "sha");
     return Base64Decode(Utf8(JsonString(response, "content")), content);
 }
@@ -324,6 +375,7 @@ bool GitHubClient::PutFile(const std::wstring& path, const std::string& content,
 {
     std::string body = "{\"message\":\"" + JsonEscape(Utf8(message)) + "\",\"content\":\"" + Base64Encode(content) + "\"";
     if (!sha.empty()) body += ",\"sha\":\"" + JsonEscape(Utf8(sha)) + "\"";
+    if (!Branch.empty()) body += ",\"branch\":\"" + JsonEscape(Utf8(Branch)) + "\"";
     body += "}";
     std::string response;
     return Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);

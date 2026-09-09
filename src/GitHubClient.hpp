@@ -18,14 +18,23 @@ struct GitHubRepository
     std::wstring DefaultBranch;
 };
 
+struct GitHubBranch
+{
+    std::wstring Name;
+    std::wstring Sha;
+    bool Protected = false;
+};
+
 class GitHubClient
 {
 public:
     explicit GitHubClient(const std::wstring& token);
     GitHubClient(const std::wstring& token, const std::wstring& repository);
+    GitHubClient(const std::wstring& token, const std::wstring& repository, const std::wstring& branch);
 
     bool TestConnection(std::wstring& login, std::wstring& error);
     bool GetRepositories(std::vector<GitHubRepository>& repositories, std::wstring& error);
+    bool GetBranches(std::vector<GitHubBranch>& branches, std::wstring& error);
     bool GetEntries(const std::wstring& path, std::vector<GitHubEntry>& entries, std::wstring& error);
     bool GetFile(const std::wstring& path, std::string& content, std::wstring& sha, std::wstring& error);
     bool PutFile(const std::wstring& path, const std::string& content, const std::wstring& sha, const std::wstring& message, std::wstring& error);
@@ -34,6 +43,7 @@ public:
 private:
     std::wstring Token;
     std::wstring Repository;
+    std::wstring Branch;
 
     bool Request(const std::wstring& method, const std::wstring& path, const std::string& body, std::string& response, std::wstring& error);
     static std::string Base64Encode(const std::string& data);
@@ -42,6 +52,7 @@ private:
     static std::wstring Wide(const std::string& value);
     static std::wstring JsonString(const std::string& json, const std::string& key);
     static unsigned long long JsonNumber(const std::string& json, const std::string& key);
+    static bool JsonBool(const std::string& json, const std::string& key);
     static std::string JsonEscape(const std::string& value);
     static std::wstring UrlPath(const std::wstring& value);
     static std::vector<std::string> JsonObjects(const std::string& json);
