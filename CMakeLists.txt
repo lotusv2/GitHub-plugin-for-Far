@@ -9,13 +9,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(FetchContent)
-FetchContent_Declare(
-    FarManager
-    GIT_REPOSITORY https://github.com/FarGroup/FarManager.git
-    GIT_TAG master
-)
-FetchContent_MakeAvailable(FarManager)
+# Загружаем только официальный заголовок Far Manager Plugin API.
+set(FAR_SDK_DIR "${CMAKE_BINARY_DIR}/far-sdk")
+set(FAR_PLUGIN_HPP "${FAR_SDK_DIR}/plugin.hpp")
+file(MAKE_DIRECTORY "${FAR_SDK_DIR}")
+
+if(NOT EXISTS "${FAR_PLUGIN_HPP}")
+    file(DOWNLOAD
+        "https://raw.githubusercontent.com/FarGroup/FarManager/1f5b3c89801e93ae22b123c716ffaf5d4de7d91a/far/plugin.hpp"
+        "${FAR_PLUGIN_HPP}"
+        TLS_VERIFY ON
+        STATUS FAR_SDK_DOWNLOAD_STATUS
+    )
+    list(GET FAR_SDK_DOWNLOAD_STATUS 0 FAR_SDK_DOWNLOAD_CODE)
+    if(NOT FAR_SDK_DOWNLOAD_CODE EQUAL 0)
+        message(FATAL_ERROR "Не удалось загрузить plugin.hpp Far Manager")
+    endif()
+endif()
 
 add_library(FarGitHub SHARED
     src/FarGitHub.cpp
@@ -35,7 +45,7 @@ target_compile_options(FarGitHub PRIVATE /W4 /EHsc)
 target_link_libraries(FarGitHub PRIVATE winhttp)
 
 target_include_directories(FarGitHub PRIVATE
-    ${farmanager_SOURCE_DIR}/far
+    ${FAR_SDK_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
