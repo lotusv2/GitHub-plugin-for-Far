@@ -68,15 +68,29 @@ bool GitHubClient::Request(const std::wstring& method, const std::wstring& path,
 
 std::wstring GitHubClient::JsonString(const std::string& json, const std::string& key)
 {
-    std::string marker = "\"" + key + "\":\"";
+    std::string marker = "\"" + key + "\"";
     size_t p = json.find(marker);
     if (p == std::string::npos) return {};
     p += marker.size();
+    while (p < json.size() && (std::isspace((unsigned char)json[p]) || json[p] == ':')) ++p;
+    if (p >= json.size() || json[p] != '"') return {};
+    ++p;
     std::string value; bool escape = false;
     for (; p < json.size(); ++p)
     {
         char c = json[p];
-        if (escape) { value += c; escape = false; continue; }
+        if (escape)
+        {
+            switch (c)
+            {
+                case 'n': value += '\n'; break;
+                case 'r': value += '\r'; break;
+                case 't': value += '\t'; break;
+                default: value += c; break;
+            }
+            escape = false;
+            continue;
+        }
         if (c == '\\') { escape = true; continue; }
         if (c == '"') break;
         value += c;
@@ -86,10 +100,11 @@ std::wstring GitHubClient::JsonString(const std::string& json, const std::string
 
 unsigned long long GitHubClient::JsonNumber(const std::string& json, const std::string& key)
 {
-    std::string marker = "\"" + key + "\":";
+    std::string marker = "\"" + key + "\"";
     size_t p = json.find(marker);
     if (p == std::string::npos) return 0;
     p += marker.size();
+    while (p < json.size() && (std::isspace((unsigned char)json[p]) || json[p] == ':')) ++p;
     return _strtoui64(json.c_str() + p, nullptr, 10);
 }
 
@@ -100,19 +115,20 @@ bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>
     if (!path.empty()) api += L"/" + path;
     std::string response;
     if (!Request(L"GET", api, {}, response, error)) return false;
+
     size_t p = 0;
-    while ((p = response.find("{\"name\":", p)) != std::string::npos)
+    while ((p = response.find("\"name\"", p)) != std::string::npos)
     {
-        size_t end = response.find('}', p);
-        if (end == std::string::npos) break;
-        std::string object = response.substr(p, end - p + 1);
+        size_t objectEnd = response.find('}', p);
+        if (objectEnd == std::string::npos) break;
+        std::string object = response.substr(p, objectEnd - p + 1);
         GitHubEntry entry;
         entry.Name = JsonString(object, "name");
         entry.Type = JsonString(object, "type");
         entry.Sha = JsonString(object, "sha");
         entry.Size = JsonNumber(object, "size");
         if (!entry.Name.empty()) entries.push_back(entry);
-        p = end + 1;
+        p = objectEnd + 1;
     }
     return true;
 }
