@@ -108,7 +108,7 @@ intptr_t WINAPI ConfigureW(const ConfigureInfo*)
 
     if (!GPluginInfo.InputBox(&MainGuid, &MenuGuid,
         L"GitHub for Far", L"GitHub Fine-grained Personal Access Token:",
-        L"FarGitHubToken", nullptr, buffer, std::size(buffer), FIB_PASSWORD))
+        L"FarGitHubToken", buffer, buffer, std::size(buffer), nullptr, FIB_PASSWORD))
         return FALSE;
 
     const std::wstring newToken(buffer);
