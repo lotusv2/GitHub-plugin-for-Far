@@ -24,6 +24,11 @@ bool ContainsInsensitive(const std::wstring& value, const std::wstring& query)
     return left.find(right) != std::wstring::npos;
 }
 
+bool IsNotFound(const std::wstring& error)
+{
+    return error.find(L"HTTP 404") != std::wstring::npos;
+}
+
 std::wstring JoinLocalPath(const std::wstring& base, const std::wstring& name)
 {
     if (base.empty()) return name;
@@ -413,9 +418,9 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
         std::wstring lookupError;
         if (!client.GetFile(remotePath, oldContent, sha, lookupError))
         {
-            if (lookupError.find(L"HTTP 404") == std::wstring::npos)
+            if (!IsNotFound(lookupError))
             {
-                Error = lookupError;
+                Error = lookupError.empty() ? L"Unable to check remote file." : lookupError;
                 return false;
             }
             sha.clear();
@@ -446,12 +451,18 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         std::wstring probeError;
         if (!client.GetEntries(remote, children, probeError))
         {
+            if (!IsNotFound(probeError))
+            {
+                Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError;
+                return false;
+            }
             std::string content;
             std::wstring sha;
             if (!client.GetFile(remote, content, sha, Error)) return false;
             std::ofstream file(local, std::ios::binary);
             if (!file) { Error = L"Unable to create local file: " + local; return false; }
             file.write(content.data(), static_cast<std::streamsize>(content.size()));
+            if (!file) { Error = L"Unable to write local file: " + local; return false; }
             return true;
         }
         if (!CreateDirectoryW(local.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) { Error = L"Unable to create local directory: " + local; return false; }
@@ -471,6 +482,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         }
         items[i].Flags &= ~PPIF_SELECTED;
     }
+    Reload();
     return TRUE;
 }
 
@@ -499,6 +511,11 @@ bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring
             }
             return true;
         }
+        if (!IsNotFound(listError))
+        {
+            Error = listError.empty() ? L"Unable to read rename source." : listError;
+            return false;
+        }
         std::string content;
         std::wstring sha;
         if (!client.GetFile(oldName, content, sha, Error)) return false;
@@ -521,6 +538,11 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         {
             for (const auto& child : children) if (!removeEntry(path + L"/" + child.Name)) return false;
             return true;
+        }
+        if (!IsNotFound(listError))
+        {
+            Error = listError.empty() ? L"Unable to read delete source." : listError;
+            return false;
         }
         std::string content;
         std::wstring sha;
