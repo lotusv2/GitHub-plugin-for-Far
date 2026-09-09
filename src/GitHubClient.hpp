@@ -14,7 +14,7 @@ struct GitHubEntry
 class GitHubClient
 {
 public:
-    explicit GitHubClient(const std::wstring& token);
+    GitHubClient(const std::wstring& token, const std::wstring& repository);
 
     bool GetEntries(const std::wstring& path, std::vector<GitHubEntry>& entries, std::wstring& error);
     bool GetFile(const std::wstring& path, std::string& content, std::wstring& sha, std::wstring& error);
