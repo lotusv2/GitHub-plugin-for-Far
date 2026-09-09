@@ -164,8 +164,7 @@ intptr_t FarGitHubPanel::ProcessInput(const INPUT_RECORD& record)
     const DWORD state = key.dwControlKeyState;
     const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
     const bool shift = (state & SHIFT_PRESSED) != 0;
-    if (!ctrl && !shift && key.wVirtualKeyCode == VK_F6 && !Repository.empty())
-        return ProcessRenameInput(this);
+    if (!ctrl && !shift && key.wVirtualKeyCode == VK_F6 && !Repository.empty()) return ProcessRenameInput(this);
     if (ctrl && key.wVirtualKeyCode == 'B' && shift && !Repository.empty()) return SelectBranch() ? TRUE : FALSE;
     if (ctrl && key.wVirtualKeyCode == 'F' && !shift && Repository.empty()) return SearchRepositories() ? TRUE : FALSE;
     if (ctrl && key.wVirtualKeyCode == 'B' && !shift && Repository.empty())
@@ -198,7 +197,7 @@ std::wstring FarGitHubPanel::FullPath(const std::wstring& name) const
     return CurrentPath.empty() ? name : CurrentPath + L"/" + name;
 }
 
-intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPERATION_MODES mode)
+intptr_t FarGitHubPanel::GetFindData(PluginPanelItem** items, size_t* count, OPERATION_MODES)
 {
     if (!Reload()) { ShowError(); return -1; }
     *count = Entries.size();
@@ -357,30 +356,86 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
 {
     if (!items || !count || !sourcePath || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
-    for (size_t i = 0; i < count; ++i)
+    std::function<bool(const std::wstring&, const std::wstring&)> uploadEntry;
+    uploadEntry = [&](const std::wstring& localPath, const std::wstring& remotePath) -> bool
     {
-        if (items[i].FileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        const std::wstring local = JoinLocalPath(sourcePath, items[i].FileName);
-        std::ifstream file(local, std::ios::binary);
-        if (!file) { Error = L"Unable to read local file: " + local; ShowError(); return FALSE; }
+        const DWORD attributes = GetFileAttributesW(localPath.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES)
+        {
+            Error = L"Unable to access local path: " + localPath;
+            return false;
+        }
+
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            WIN32_FIND_DATAW data = {};
+            const std::wstring pattern = JoinLocalPath(localPath, L"*");
+            HANDLE handle = FindFirstFileW(pattern.c_str(), &data);
+            if (handle == INVALID_HANDLE_VALUE)
+            {
+                Error = L"Unable to enumerate local directory: " + localPath;
+                return false;
+            }
+
+            bool hasEntries = false;
+            bool success = true;
+            do
+            {
+                const std::wstring name = data.cFileName;
+                if (name == L"." || name == L"..") continue;
+                hasEntries = true;
+                const std::wstring childLocal = JoinLocalPath(localPath, name);
+                const std::wstring childRemote = remotePath + L"/" + name;
+                if (!uploadEntry(childLocal, childRemote))
+                {
+                    success = false;
+                    break;
+                }
+            }
+            while (FindNextFileW(handle, &data));
+
+            FindClose(handle);
+            if (!success) return false;
+            if (!hasEntries)
+                return client.CreateDirectoryEntry(remotePath, L"Create directory " + remotePath, Error);
+            return true;
+        }
+
+        std::ifstream file(localPath, std::ios::binary);
+        if (!file)
+        {
+            Error = L"Unable to read local file: " + localPath;
+            return false;
+        }
         const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        const std::wstring remote = FullPath(items[i].FileName);
         std::wstring sha;
         std::string oldContent;
         std::wstring lookupError;
-        if (!client.GetFile(remote, oldContent, sha, lookupError))
+        if (!client.GetFile(remotePath, oldContent, sha, lookupError))
         {
-            if (lookupError.find(L"HTTP 404") == std::wstring::npos) { Error = lookupError; ShowError(); return FALSE; }
+            if (lookupError.find(L"HTTP 404") == std::wstring::npos)
+            {
+                Error = lookupError;
+                return false;
+            }
             sha.clear();
         }
-        if (!client.PutFile(remote, content, sha, L"Upload " + std::wstring(items[i].FileName), Error)) { ShowError(); return FALSE; }
+        if (!client.PutFile(remotePath, content, sha, L"Upload " + remotePath, Error)) return false;
+        return true;
+    };
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        const std::wstring local = JoinLocalPath(sourcePath, items[i].FileName);
+        const std::wstring remote = FullPath(items[i].FileName);
+        if (!uploadEntry(local, remote)) { ShowError(); return FALSE; }
         items[i].Flags &= ~PPIF_SELECTED;
     }
     Reload();
     return TRUE;
 }
 
-intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES mode)
+intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES)
 {
     if (!items || !count || !destinationPath || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
@@ -412,7 +467,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         if (move)
         {
             Error.clear();
-            if (!DeleteFiles(&items[i], 1, mode | OPM_SILENT)) return FALSE;
+            if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return FALSE;
         }
         items[i].Flags &= ~PPIF_SELECTED;
     }
@@ -453,7 +508,7 @@ bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring
     return renameEntry(oldPath, newPath);
 }
 
-intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES mode)
+intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES opMode)
 {
     if (!items || !count || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
@@ -472,7 +527,7 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         if (!client.GetFile(path, content, sha, Error)) return false;
         return client.DeleteFile(path, sha, L"Delete " + path, Error);
     };
-    if ((mode & OPM_SILENT) == 0)
+    if (!(opMode & OPM_SILENT))
     {
         const wchar_t* text[] = { L"GitHub", L"Delete selected item(s)?" };
         if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
