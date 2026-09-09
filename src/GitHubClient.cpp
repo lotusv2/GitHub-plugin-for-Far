@@ -262,6 +262,15 @@ bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>
     if (!Branch.empty()) api += L"?ref=" + UrlPath(Branch);
     std::string response;
     if (!Request(L"GET", api, {}, response, error)) return false;
+
+    // GitHub возвращает объект для файла и массив объектов для каталога.
+    // Для вызывающего кода false означает, что путь нельзя перечислить как каталог.
+    if (!path.empty() && JsonString(response, "type") == L"file")
+    {
+        error = L"HTTP 404: Path is not a directory";
+        return false;
+    }
+
     for (const auto& object : JsonObjects(response))
     {
         GitHubEntry entry;
