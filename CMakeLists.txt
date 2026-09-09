@@ -9,14 +9,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Загружаем только официальный заголовок Far Manager Plugin API.
+# Фиксируем совместимую с C++17 версию официального заголовка Far Manager Plugin API.
 set(FAR_SDK_DIR "${CMAKE_BINARY_DIR}/far-sdk")
 set(FAR_PLUGIN_HPP "${FAR_SDK_DIR}/plugin.hpp")
 file(MAKE_DIRECTORY "${FAR_SDK_DIR}")
 
 if(NOT EXISTS "${FAR_PLUGIN_HPP}")
     file(DOWNLOAD
-        "https://raw.githubusercontent.com/FarGroup/FarManager/1f5b3c89801e93ae22b123c716ffaf5d4de7d91a/far/plugin.hpp"
+        "https://raw.githubusercontent.com/FarGroup/FarManager/8837748b17b857e8d3b05e9348c66f00be5368b4/far/plugin.hpp"
         "${FAR_PLUGIN_HPP}"
         TLS_VERIFY ON
         STATUS FAR_SDK_DOWNLOAD_STATUS
