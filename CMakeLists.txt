@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FarGitHub VERSION 0.4.0 LANGUAGES CXX RC)
+project(FarGitHub VERSION 0.5.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "FarGitHub is a Windows Far Manager plugin")
@@ -47,6 +47,7 @@ add_library(FarGitHub SHARED
     src/GitHubClient.hpp
     src/Panel.cpp
     src/Panel.hpp
+    src/PanelOperations.cpp
     src/Settings.cpp
     src/Settings.hpp
     src/resource.rc
