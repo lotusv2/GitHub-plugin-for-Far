@@ -16,7 +16,7 @@ file(MAKE_DIRECTORY "${FAR_SDK_DIR}")
 
 if(NOT EXISTS "${FAR_PLUGIN_HPP}")
     file(DOWNLOAD
-        "https://raw.githubusercontent.com/FarGroup/FarManager/8837748b17b857e8d3b05e9348c66f00be5368b4/far/plugin.hpp"
+        "https://raw.githubusercontent.com/FarGroup/FarManager/457da91d334cf8d6118da9bcd7a67eeb8a2c8864/far/plugin.hpp"
         "${FAR_PLUGIN_HPP}"
         TLS_VERIFY ON
         STATUS FAR_SDK_DOWNLOAD_STATUS
