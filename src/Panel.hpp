@@ -1,5 +1,6 @@
 #pragma once
 
+#include <windows.h>
 #include <plugin.hpp>
 #include "GitHubClient.hpp"
 
