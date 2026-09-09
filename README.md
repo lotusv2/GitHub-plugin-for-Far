@@ -1,57 +1,73 @@
-# GitHub-plugin-for-Far
+# GitHub plugin for Far Manager
 
-Полноценный DLL-плагин для Far Manager для работы с GitHub как с виртуальной файловой системой.
+Нативный DLL-плагин Far Manager для работы с репозиториями GitHub непосредственно из файловых панелей.
 
-## Что уже реализовано
+## Возможности v0.2.0
 
-- DLL-плагин с нативным Far Manager Plugin API.
-- Панель GitHub.
-- Навигация по каталогам репозитория.
-- Открытие файлов в редакторе Far Manager.
-- Отправка изменённого файла обратно в GitHub отдельным коммитом.
-- Создание каталогов через `.gitkeep`.
-- HTTPS через системный WinHTTP, без curl/libcurl.
-- CMake-сборка для x64 и Win32.
+- настройка GitHub Fine-grained Personal Access Token через меню Far Manager;
+- проверка токена запросом к GitHub API;
+- шифрование токена средствами Windows DPAPI;
+- автоматическая загрузка списка доступных репозиториев;
+- навигация по каталогам репозитория;
+- просмотр и редактирование файлов через встроенный редактор Far;
+- сохранение изменений непосредственно в GitHub;
+- копирование локальных файлов в GitHub;
+- создание каталогов через `.gitkeep`;
+- UTF-8 во всех исходных и текстовых файлах проекта.
 
 ## Настройка
 
-Пока используется простой первый вариант конфигурации через переменные окружения:
+1. Откройте Far Manager.
+2. Вызовите меню плагинов `F11`.
+3. Выберите `GitHub`.
+4. Откройте конфигурацию плагина.
+5. Введите GitHub Fine-grained Personal Access Token.
+6. Плагин проверит токен и сохранит его в зашифрованном виде.
 
-```bat
-setx FAR_GITHUB_TOKEN "github_pat_..."
-setx FAR_GITHUB_REPOSITORY "lotusv2/GitHub-plugin-for-Far"
+Для рекомендуемой конфигурации токена достаточно прав:
+
+- **Metadata: Read-only**;
+- **Contents: Read and write**.
+
+Права для Pull Requests и Issues понадобятся только после реализации соответствующих функций.
+
+## Сборка
+
+Проект собирается в Visual Studio toolchain через CMake.
+
+```text
+cmake -S . -B build -A x64
+cmake --build build --config Release
 ```
 
-Для работы с приватным репозиторием токен должен иметь права, необходимые для чтения и записи содержимого репозитория.
+Для Win32:
 
-## Запуск
+```text
+cmake -S . -B build32 -A Win32
+cmake --build build32 --config Release
+```
 
-После установки DLL в каталог `%FARHOME%\Plugins\FarGitHub\`:
+Результат:
 
-`F11` → `GitHub`
+```text
+build/Release/FarGitHub.dll
+```
+
+Установите DLL в каталог:
+
+```text
+%FARHOME%\\Plugins\\FarGitHub\\FarGitHub.dll
+```
 
 ## Архитектура
 
-```text
-src/
-├── FarGitHub.cpp/.hpp       # точка сборки DLL
-├── Plugin.cpp/.hpp          # Far Manager Plugin API
-├── Panel.cpp/.hpp           # виртуальная панель GitHub
-├── GitHubClient.cpp/.hpp    # REST API GitHub
-├── FarGitHub.def             # экспорт DLL
-└── resource.rc               # версия Windows DLL
-```
+Подробное описание компонентов находится в `docs/ARCHITECTURE.md`.
 
-## План развития
+## Дорожная карта
 
-1. Выбор пользователя и репозитория прямо из Far.
-2. Выбор ветки.
-3. Полноценные Create/Rename/Delete.
-4. Copy/Move файлов между Far и GitHub.
-5. Commit message и выбор ветки перед записью.
-6. Просмотр истории коммитов.
-7. Diff перед отправкой изменений.
-8. Настройки токена внутри Far Manager.
-9. Кэширование и работа с большими репозиториями.
-
-См. `docs/BUILD.md` для сборки.
+- **v0.1.0** — базовая виртуальная панель GitHub.
+- **v0.2.0** — настройки, DPAPI и автоматический список репозиториев.
+- **v0.3.0** — поиск и избранные репозитории.
+- **v0.4.0** — выбор и переключение веток.
+- **v0.5.0** — расширенные операции с файлами.
+- **v1.0.0** — история, commits, pull requests и полноценный Git workflow.
