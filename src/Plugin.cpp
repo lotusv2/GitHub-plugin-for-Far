@@ -60,10 +60,17 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
 {
     info->StructSize = sizeof(*info);
     info->Flags = PF_NONE;
+
     static const wchar_t* menu[] = { L"GitHub" };
     info->PluginMenu.Guids = &MenuGuid;
     info->PluginMenu.Strings = menu;
     info->PluginMenu.Count = 1;
+
+    // Регистрируем тот же пункт в меню конфигурации плагинов Far Manager.
+    info->PluginConfig.Guids = &MenuGuid;
+    info->PluginConfig.Strings = menu;
+    info->PluginConfig.Count = 1;
+
     info->CommandPrefix = L"gh";
 }
 
