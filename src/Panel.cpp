@@ -241,7 +241,7 @@ intptr_t FarGitHubPanel::MakeDirectory(const wchar_t* name, OPERATION_MODES)
     if (!name || !*name || Repository.empty()) return FALSE;
 
     GitHubClient client(Token, Repository);
-    if (!client.CreateDirectory(FullPath(name), L"Create directory " + std::wstring(name), Error))
+    if (!client.CreateDirectoryEntry(FullPath(name), L"Create directory " + std::wstring(name), Error))
     {
         ShowError();
         return FALSE;
