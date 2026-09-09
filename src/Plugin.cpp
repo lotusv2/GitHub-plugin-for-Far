@@ -21,7 +21,7 @@ const wchar_t* GetPluginMessage(int)
 void WINAPI GetGlobalInfoW(GlobalInfo* info)
 {
     info->StructSize = sizeof(*info);
-    info->MinFarVersion = { FARMANAGERVERSION_MAJOR, FARMANAGERVERSION_MINOR, FARMANAGERVERSION_BUILD, FARMANAGERVERSION_REVISION, FARMANAGERVERSION_STAGE };
+    info->MinFarVersion = { FARMANAGERVERSION_MAJOR, FARMANAGERVERSION_MINOR, FARMANAGERVERSION_REVISION, FARMANAGERVERSION_BUILD, FARMANAGERVERSION_STAGE };
     info->Version = PluginVersion;
     info->Guid = MainGuid;
     info->Title = PluginTitle.c_str();
