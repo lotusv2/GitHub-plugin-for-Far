@@ -14,7 +14,7 @@ const GUID MainGuid = { 0x7f0d7c51, 0x6e8a, 0x4c2a, { 0x9d, 0x53, 0x41, 0x1b, 0x
 const GUID MenuGuid = { 0x5b7b4c22, 0x6f0f, 0x4b13, { 0xa0, 0x14, 0x91, 0x34, 0x12, 0x88, 0x51, 0x20 } };
 const GUID SettingsDialogGuid = { 0x4c2e1d9a, 0x8b4f, 0x4d65, { 0x91, 0x27, 0x62, 0x3d, 0x7a, 0x0e, 0x54, 0x19 } };
 
-static constexpr VersionInfo PluginVersion = { 0, 4, 0, 0, VS_PRIVATE };
+static constexpr VersionInfo PluginVersion = { 0, 5, 0, 0, VS_PRIVATE };
 static std::wstring PluginTitle = L"GitHub for Far";
 static std::unique_ptr<FarGitHubPanel> ActivePanel;
 
@@ -106,7 +106,21 @@ intptr_t WINAPI ProcessHostFileW(const ProcessHostFileInfo* info)
 intptr_t WINAPI ProcessPanelInputW(const ProcessPanelInputInfo* info)
 {
     auto* panel = static_cast<FarGitHubPanel*>(info->hPanel);
-    return panel ? panel->ProcessInput(info->Rec) : FALSE;
+    if (!panel)
+        return FALSE;
+
+    const auto& key = info->Rec.Event.KeyEvent;
+    const DWORD state = key.dwControlKeyState;
+    const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
+    const bool shift = (state & SHIFT_PRESSED) != 0;
+
+    if (info->Rec.EventType == KEY_EVENT && key.bKeyDown &&
+        key.wVirtualKeyCode == VK_F6 && !ctrl && !shift)
+    {
+        return ProcessRenameInput(panel);
+    }
+
+    return panel->ProcessInput(info->Rec);
 }
 
 intptr_t WINAPI MakeDirectoryW(MakeDirectoryInfo* info)

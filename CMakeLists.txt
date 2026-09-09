@@ -48,6 +48,7 @@ add_library(FarGitHub SHARED
     src/Panel.cpp
     src/Panel.hpp
     src/PanelOperations.cpp
+    src/PanelRename.cpp
     src/Settings.cpp
     src/Settings.hpp
     src/resource.rc

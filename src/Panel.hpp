@@ -22,6 +22,8 @@ public:
     void ReloadSettings();
 
 private:
+    friend intptr_t ProcessRenameInput(FarGitHubPanel* panel);
+
     std::wstring Token;
     std::wstring Repository;
     std::wstring CurrentBranch;
@@ -48,3 +50,5 @@ private:
     bool RenameEntry(const std::wstring& oldPath, const std::wstring& newPath);
     void ShowError(const std::wstring& title = L"GitHub") const;
 };
+
+intptr_t ProcessRenameInput(FarGitHubPanel* panel);
