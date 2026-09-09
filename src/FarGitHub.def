@@ -1,0 +1,15 @@
+LIBRARY FarGitHub
+EXPORTS
+    GetGlobalInfoW
+    SetStartupInfoW
+    GetPluginInfoW
+    OpenW
+    ClosePanelW
+    GetFindDataW
+    FreeFindDataW
+    GetOpenPanelInfoW
+    SetDirectoryW
+    ProcessHostFileW
+    MakeDirectoryW
+    ConfigureW
+    ExitFARW
