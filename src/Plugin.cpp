@@ -6,6 +6,7 @@
 #include <memory>
 #include <iterator>
 #include <cwchar>
+#include <string>
 
 PluginStartupInfo GPluginInfo = {};
 FarStandardFunctions GFarFunctions = {};
@@ -74,15 +75,33 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
     info->CommandPrefix = L"gh";
 }
 
-HANDLE WINAPI OpenW(const OpenInfo*)
+HANDLE WINAPI OpenW(const OpenInfo* info)
 {
     const wchar_t* entered[] = { L"GitHub for Far", L"OpenW() entered." };
     GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, entered, 2, 1);
+
+    std::wstring diagnostic;
+    if (info)
+    {
+        diagnostic = L"OpenFrom=" + std::to_wstring(static_cast<int>(info->OpenFrom)) +
+                     L"; StructSize=" + std::to_wstring(info->StructSize);
+    }
+    else
+    {
+        diagnostic = L"OpenInfo is null.";
+    }
+
+    const wchar_t* openInfoMessage[] = { L"GitHub for Far", diagnostic.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, openInfoMessage, 2, 1);
 
     ActivePanel = std::make_unique<FarGitHubPanel>();
 
     const wchar_t* created[] = { L"GitHub for Far", L"FarGitHubPanel created." };
     GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, created, 2, 1);
+
+    const std::wstring handleText = L"Handle=" + std::to_wstring(reinterpret_cast<uintptr_t>(ActivePanel.get()));
+    const wchar_t* handleMessage[] = { L"GitHub for Far", handleText.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, handleMessage, 2, 1);
 
     return ActivePanel.get();
 }
