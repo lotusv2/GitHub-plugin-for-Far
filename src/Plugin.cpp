@@ -117,23 +117,33 @@ void WINAPI ClosePanelW(const ClosePanelInfo* info)
 
 intptr_t WINAPI GetFindDataW(GetFindDataInfo* info)
 {
-    const std::wstring diagnostic = !info ? L"GetFindData: info=null" :
-        L"GetFindData: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
-    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
-
     if (!info || !info->hPanel)
-        return -1;
+        return 0;
 
-    // Временный ABI-тест: не вызываем код панели и не работаем с GitHub.
-    info->PanelItem = nullptr;
-    info->ItemsNumber = 0;
+    auto* panel = static_cast<FarGitHubPanel*>(info->hPanel);
+    PluginPanelItem* items = nullptr;
+    size_t count = 0;
+    const intptr_t result = panel->GetFindData(&items, &count, OPM_NONE);
+
+    if (result != 0)
+    {
+        info->PanelItem = nullptr;
+        info->ItemsNumber = 0;
+        return 0;
+    }
+
+    info->PanelItem = items;
+    info->ItemsNumber = count;
     return 1;
 }
 
 void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
 {
-    (void)info;
+    if (!info || !info->hPanel)
+        return;
+
+    auto* panel = static_cast<FarGitHubPanel*>(info->hPanel);
+    panel->FreeFindData(info->PanelItem, info->ItemsNumber);
 }
 
 void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
