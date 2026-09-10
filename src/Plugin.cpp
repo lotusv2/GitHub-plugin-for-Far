@@ -74,15 +74,10 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
     info->CommandPrefix = L"gh";
 }
 
-HANDLE WINAPI OpenW(const OpenInfo* info)
+HANDLE WINAPI OpenW(const OpenInfo*)
 {
-    if (!info)
-        return nullptr;
-
-    auto panel = std::make_unique<FarGitHubPanel>();
-    auto* handle = panel.get();
-    ActivePanel = std::move(panel);
-    return handle;
+    ActivePanel = std::make_unique<FarGitHubPanel>();
+    return ActivePanel.get();
 }
 
 void WINAPI ClosePanelW(const ClosePanelInfo*)
