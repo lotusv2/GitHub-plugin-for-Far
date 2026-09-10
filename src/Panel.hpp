@@ -4,6 +4,20 @@
 #include <plugin.hpp>
 #include "GitHubClient.hpp"
 
+class FarPanelPath : public std::wstring
+{
+public:
+    using std::wstring::wstring;
+    using std::wstring::operator=;
+
+    const wchar_t* c_str() const
+    {
+        // Пустой путь внутри репозитория должен отличаться от корня панели Far.
+        // Иначе Far автоматически закрывает плагин при переходе по "..".
+        return empty() ? L"\\" : std::wstring::c_str();
+    }
+};
+
 class FarGitHubPanel
 {
 public:
@@ -33,7 +47,7 @@ private:
     std::wstring Repository;
     std::wstring CurrentBranch;
     std::wstring DefaultBranch;
-    std::wstring CurrentPath;
+    FarPanelPath CurrentPath;
     std::wstring SearchText;
     std::vector<GitHubEntry> Entries;
     std::vector<GitHubRepository> Repositories;
