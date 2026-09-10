@@ -111,7 +111,6 @@ void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
     if (!info || !info->hPanel)
         return;
 
-    *info = {};
     info->StructSize = sizeof(*info);
     static_cast<FarGitHubPanel*>(info->hPanel)->GetOpenPanelInfo(info);
 }
