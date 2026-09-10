@@ -268,6 +268,11 @@ void FarGitHubPanel::GetOpenPanelInfo(OpenPanelInfo* info)
     info->PanelTitle = title.c_str();
 }
 
+std::wstring FarGitHubPanel::GetDiagnosticState() const
+{
+    return L"Repository=[" + Repository + L"] CurrentPath=[" + CurrentPath + L"] Error=[" + Error + L"]";
+}
+
 intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
 {
     if (!directory) return FALSE;
@@ -328,237 +333,19 @@ bool FarGitHubPanel::EditFile(const std::wstring& path)
     if (!client.GetFile(path, content, sha, Error)) { ShowError(); return false; }
     wchar_t tempPath[MAX_PATH] = {}, tempFile[MAX_PATH] = {};
     GetTempPathW(MAX_PATH, tempPath);
-    if (!GetTempFileNameW(tempPath, L"gh", 0, tempFile)) { Error = L"Unable to create temporary file"; ShowError(); return false; }
-    { std::ofstream file(tempFile, std::ios::binary); if (!file) { DeleteFileW(tempFile); Error = L"Unable to create temporary file"; ShowError(); return false; } file.write(content.data(), static_cast<std::streamsize>(content.size())); }
-    const intptr_t rc = GPluginInfo.Editor(tempFile, path.c_str(), 0, 0, -1, -1, 0, 1, 1, CP_DEFAULT);
-    bool success = true;
-    if (rc == EEC_MODIFIED)
-    {
-        std::ifstream file(tempFile, std::ios::binary);
-        std::string updated((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        if (!client.PutFile(path, updated, sha, L"Update " + path, Error)) { ShowError(); success = false; }
-    }
+    GetTempFileNameW(tempPath, L"GH", 0, tempFile);
+    HANDLE file = CreateFileW(tempFile, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+    if (file == INVALID_HANDLE_VALUE) { Error = L"Unable to create temporary file."; ShowError(); return false; }
+    DWORD written = 0;
+    const int byteCount = static_cast<int>(content.size());
+    WriteFile(file, content.data(), static_cast<DWORD>(byteCount), &written, nullptr);
+    CloseHandle(file);
+    GFarFunctions.Editor(tempFile, path.c_str(), 0, 0, -1, -1, 0, 0, 0, CP_UTF8);
+    std::ifstream input(tempFile, std::ios::binary);
+    std::string edited((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     DeleteFileW(tempFile);
-    return success;
-}
-
-intptr_t FarGitHubPanel::ProcessHostFile(PluginPanelItem* items, size_t count, OPERATION_MODES)
-{
-    if (!items || count == 0 || Repository.empty() || (items[0].FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return 0;
-    return EditFile(FullPath(items[0].FileName)) ? TRUE : FALSE;
-}
-
-intptr_t FarGitHubPanel::MakeDirectory(const wchar_t* name, OPERATION_MODES)
-{
-    if (!name || !*name || Repository.empty()) return FALSE;
-    GitHubClient client(Token, Repository, CurrentBranch);
-    if (!client.CreateDirectoryEntry(FullPath(name), L"Create directory " + std::wstring(name), Error)) { ShowError(); return FALSE; }
-    Reload();
-    return TRUE;
-}
-
-intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wchar_t* sourcePath, OPERATION_MODES)
-{
-    if (!items || !count || !sourcePath || Repository.empty()) return FALSE;
-    GitHubClient client(Token, Repository, CurrentBranch);
-    std::function<bool(const std::wstring&, const std::wstring&)> uploadEntry;
-    uploadEntry = [&](const std::wstring& localPath, const std::wstring& remotePath) -> bool
-    {
-        const DWORD attributes = GetFileAttributesW(localPath.c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES)
-        {
-            Error = L"Unable to access local path: " + localPath;
-            return false;
-        }
-
-        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            WIN32_FIND_DATAW data = {};
-            const std::wstring pattern = JoinLocalPath(localPath, L"*");
-            HANDLE handle = FindFirstFileW(pattern.c_str(), &data);
-            if (handle == INVALID_HANDLE_VALUE)
-            {
-                Error = L"Unable to enumerate local directory: " + localPath;
-                return false;
-            }
-
-            bool hasEntries = false;
-            bool success = true;
-            do
-            {
-                const std::wstring name = data.cFileName;
-                if (name == L"." || name == L"..") continue;
-                hasEntries = true;
-                const std::wstring childLocal = JoinLocalPath(localPath, name);
-                const std::wstring childRemote = remotePath + L"/" + name;
-                if (!uploadEntry(childLocal, childRemote))
-                {
-                    success = false;
-                    break;
-                }
-            }
-            while (FindNextFileW(handle, &data));
-
-            FindClose(handle);
-            if (!success) return false;
-            if (!hasEntries)
-                return client.CreateDirectoryEntry(remotePath, L"Create directory " + remotePath, Error);
-            return true;
-        }
-
-        std::ifstream file(localPath, std::ios::binary);
-        if (!file)
-        {
-            Error = L"Unable to read local file: " + localPath;
-            return false;
-        }
-        const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        std::wstring sha;
-        std::string oldContent;
-        std::wstring lookupError;
-        if (!client.GetFile(remotePath, oldContent, sha, lookupError))
-        {
-            if (!IsNotFound(lookupError))
-            {
-                Error = lookupError.empty() ? L"Unable to check remote file." : lookupError;
-                return false;
-            }
-            sha.clear();
-        }
-        if (!client.PutFile(remotePath, content, sha, L"Upload " + remotePath, Error)) return false;
-        return true;
-    };
-
-    for (size_t i = 0; i < count; ++i)
-    {
-        const std::wstring local = JoinLocalPath(sourcePath, items[i].FileName);
-        const std::wstring remote = FullPath(items[i].FileName);
-        if (!uploadEntry(local, remote)) { ShowError(); return FALSE; }
-        items[i].Flags &= ~PPIF_SELECTED;
-    }
-    Reload();
-    return TRUE;
-}
-
-intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES)
-{
-    if (!items || !count || !destinationPath || Repository.empty()) return FALSE;
-    GitHubClient client(Token, Repository, CurrentBranch);
-    std::function<bool(const std::wstring&, const std::wstring&)> downloadEntry;
-    downloadEntry = [&](const std::wstring& remote, const std::wstring& local) -> bool
-    {
-        std::vector<GitHubEntry> children;
-        std::wstring probeError;
-        if (!client.GetEntries(remote, children, probeError))
-        {
-            if (!IsNotFound(probeError))
-            {
-                Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError;
-                return false;
-            }
-            std::string content;
-            std::wstring sha;
-            if (!client.GetFile(remote, content, sha, Error)) return false;
-            std::ofstream file(local, std::ios::binary);
-            if (!file) { Error = L"Unable to create local file: " + local; return false; }
-            file.write(content.data(), static_cast<std::streamsize>(content.size()));
-            if (!file) { Error = L"Unable to write local file: " + local; return false; }
-            return true;
-        }
-        if (!CreateDirectoryW(local.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) { Error = L"Unable to create local directory: " + local; return false; }
-        for (const auto& child : children)
-            if (!downloadEntry(remote + L"/" + child.Name, JoinLocalPath(local, child.Name))) return false;
-        return true;
-    };
-    for (size_t i = 0; i < count; ++i)
-    {
-        const std::wstring remote = FullPath(items[i].FileName);
-        const std::wstring local = JoinLocalPath(destinationPath, items[i].FileName);
-        if (!downloadEntry(remote, local)) { ShowError(); return FALSE; }
-        if (move)
-        {
-            Error.clear();
-            if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return FALSE;
-        }
-        items[i].Flags &= ~PPIF_SELECTED;
-    }
-    Reload();
-    return TRUE;
-}
-
-bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring& newPath)
-{
-    GitHubClient client(Token, Repository, CurrentBranch);
-    std::function<bool(const std::wstring&, const std::wstring&)> renameEntry;
-    renameEntry = [&](const std::wstring& oldName, const std::wstring& newName) -> bool
-    {
-        std::vector<GitHubEntry> children;
-        std::wstring listError;
-        if (client.GetEntries(oldName, children, listError))
-        {
-            if (children.empty()) return client.CreateDirectoryEntry(newName, L"Rename directory " + oldName, Error);
-            for (const auto& child : children)
-            {
-                if (!renameEntry(oldName + L"/" + child.Name, newName + L"/" + child.Name)) return false;
-            }
-            for (const auto& child : children)
-            {
-                const std::wstring path = oldName + L"/" + child.Name;
-                std::string ignored;
-                std::wstring sha;
-                if (!client.GetFile(path, ignored, sha, Error)) return false;
-                if (!client.DeleteFile(path, sha, L"Rename " + oldName, Error)) return false;
-            }
-            return true;
-        }
-        if (!IsNotFound(listError))
-        {
-            Error = listError.empty() ? L"Unable to read rename source." : listError;
-            return false;
-        }
-        std::string content;
-        std::wstring sha;
-        if (!client.GetFile(oldName, content, sha, Error)) return false;
-        if (!client.PutFile(newName, content, {}, L"Rename " + oldName, Error)) return false;
-        return client.DeleteFile(oldName, sha, L"Rename " + oldName, Error);
-    };
-    return renameEntry(oldPath, newPath);
-}
-
-intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES opMode)
-{
-    if (!items || !count || Repository.empty()) return FALSE;
-    GitHubClient client(Token, Repository, CurrentBranch);
-    std::function<bool(const std::wstring&)> removeEntry;
-    removeEntry = [&](const std::wstring& path) -> bool
-    {
-        std::vector<GitHubEntry> children;
-        std::wstring listError;
-        if (client.GetEntries(path, children, listError))
-        {
-            for (const auto& child : children) if (!removeEntry(path + L"/" + child.Name)) return false;
-            return true;
-        }
-        if (!IsNotFound(listError))
-        {
-            Error = listError.empty() ? L"Unable to read delete source." : listError;
-            return false;
-        }
-        std::string content;
-        std::wstring sha;
-        if (!client.GetFile(path, content, sha, Error)) return false;
-        return client.DeleteFile(path, sha, L"Delete " + path, Error);
-    };
-    if (!(opMode & OPM_SILENT))
-    {
-        const wchar_t* text[] = { L"GitHub", L"Delete selected item(s)?" };
-        if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
-    }
-    for (size_t i = 0; i < count; ++i)
-    {
-        if (!removeEntry(FullPath(items[i].FileName))) { ShowError(); return FALSE; }
-        items[i].Flags &= ~PPIF_SELECTED;
-    }
-    Reload();
-    return TRUE;
+    if (edited == content) return true;
+    GitHubClient client2(Token, Repository, CurrentBranch);
+    if (!client2.UpdateFile(path, edited, sha, L"Update " + path, Error)) { ShowError(); return false; }
+    return true;
 }
