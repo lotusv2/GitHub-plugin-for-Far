@@ -76,7 +76,14 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
 
 HANDLE WINAPI OpenW(const OpenInfo*)
 {
+    const wchar_t* entered[] = { L"GitHub for Far", L"OpenW() entered." };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, entered, 2, 1);
+
     ActivePanel = std::make_unique<FarGitHubPanel>();
+
+    const wchar_t* created[] = { L"GitHub for Far", L"FarGitHubPanel created." };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, created, 2, 1);
+
     return ActivePanel.get();
 }
 
