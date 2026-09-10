@@ -13,6 +13,7 @@ namespace
 {
 const GUID SearchDialogGuid = { 0x7a5f3c21, 0x6b4d, 0x4f92, { 0x8c, 0x31, 0x45, 0x72, 0x9a, 0x16, 0x3e, 0x54 } };
 const GUID BranchMenuGuid = { 0x6d8b2a14, 0x4f31, 0x47c6, { 0x91, 0x28, 0x5a, 0x73, 0xb4, 0x0c, 0x2e, 0x61 } };
+const GUID SaveDialogGuid = { 0x4f1a9c72, 0x5e3d, 0x4b81, { 0x93, 0x27, 0x6a, 0x41, 0x8d, 0x2e, 0x57, 0x19 } };
 
 bool ContainsInsensitive(const std::wstring& value, const std::wstring& query)
 {
@@ -34,6 +35,29 @@ std::wstring JoinLocalPath(const std::wstring& base, const std::wstring& name)
     if (base.empty()) return name;
     if (base.back() == L'\\') return base + name;
     return base + L'\\' + name;
+}
+
+intptr_t WINAPI SavingDialogProc(HANDLE hDlg, intptr_t message, intptr_t param1, void* param2)
+{
+    if (message == DN_INITDIALOG) return TRUE;
+    return GPluginInfo.DefDlgProc(hDlg, message, param1, param2);
+}
+
+HANDLE ShowSavingDialog()
+{
+    FarDialogItem items[] =
+    {
+        { DI_DOUBLEBOX, 0, 0, 34, 4, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 1, 32, 1, { 0 }, nullptr, nullptr, DIF_NONE, L"Saving changes to GitHub...", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 2, 32, 2, { 0 }, nullptr, nullptr, DIF_NONE, L"Please wait.", 0, 0, { 0, 0 } }
+    };
+    return GPluginInfo.DialogInit(&MainGuid, &SaveDialogGuid, -1, -1, 34, 4, nullptr, items, std::size(items), 0, FDLG_NONMODAL, SavingDialogProc, nullptr);
+}
+
+void CloseSavingDialog(HANDLE hDlg)
+{
+    if (hDlg != nullptr && hDlg != INVALID_HANDLE_VALUE)
+        GPluginInfo.SendDlgMessage(hDlg, DM_CLOSE, 0, nullptr);
 }
 }
 
@@ -396,7 +420,10 @@ bool FarGitHubPanel::EditFile(const std::wstring& path)
     {
         std::ifstream file(tempFile, std::ios::binary);
         std::string updated((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        if (!client.PutFile(path, updated, sha, L"Update " + path, Error)) { ShowError(); success = false; }
+        const HANDLE savingDialog = ShowSavingDialog();
+        const bool saved = client.PutFile(path, updated, sha, L"Update " + path, Error);
+        CloseSavingDialog(savingDialog);
+        if (!saved) { ShowError(); success = false; }
     }
     DeleteFileW(tempFile);
     return success;
