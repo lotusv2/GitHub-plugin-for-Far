@@ -125,15 +125,15 @@ intptr_t WINAPI GetFindDataW(GetFindDataInfo* info)
     if (!info || !info->hPanel)
         return -1;
 
-    return static_cast<FarGitHubPanel*>(info->hPanel)->GetFindData(&info->PanelItem, &info->ItemsNumber, info->OpMode);
+    // Временный ABI-тест: не вызываем код панели и не работаем с GitHub.
+    info->PanelItem = nullptr;
+    info->ItemsNumber = 0;
+    return 0;
 }
 
 void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
 {
-    if (!info || !info->hPanel)
-        return;
-
-    static_cast<FarGitHubPanel*>(info->hPanel)->FreeFindData(info->PanelItem, info->ItemsNumber);
+    (void)info;
 }
 
 void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
