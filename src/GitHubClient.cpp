@@ -264,10 +264,30 @@ bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>
     if (!Request(L"GET", api, {}, response, error)) return false;
 
     // GitHub возвращает объект для файла и массив объектов для каталога.
-    // Для вызывающего кода false означает, что путь нельзя перечислить как каталог.
-    if (!path.empty() && JsonString(response, "type") == L"file")
+    // Проверяем форму корневого JSON, а не поле type внутри первого элемента массива.
+    size_t first = 0;
+    while (first < response.size() && std::isspace(static_cast<unsigned char>(response[first]))) ++first;
+
+    if (first >= response.size())
     {
-        error = L"HTTP 404: Path is not a directory";
+        error = L"Invalid GitHub contents response";
+        return false;
+    }
+
+    if (response[first] == '{')
+    {
+        if (!path.empty() && JsonString(response, "type") == L"file")
+        {
+            error = L"HTTP 404: Path is not a directory";
+            return false;
+        }
+        error = L"Invalid GitHub contents response";
+        return false;
+    }
+
+    if (response[first] != '[')
+    {
+        error = L"Invalid GitHub contents response";
         return false;
     }
 
