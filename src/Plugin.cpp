@@ -157,6 +157,14 @@ void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
 
 intptr_t WINAPI SetDirectoryW(const SetDirectoryInfo* info)
 {
+    if (!info || !info->hPanel)
+        return FALSE;
+
+    const std::wstring directory = info->Dir ? info->Dir : L"<null>";
+    const std::wstring diagnostic = L"SetDirectory: Dir=[" + directory + L"] OpMode=" + std::to_wstring(static_cast<unsigned long long>(info->OpMode));
+    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
+
     return static_cast<FarGitHubPanel*>(info->hPanel)->SetDirectory(info->Dir, info->OpMode);
 }
 
