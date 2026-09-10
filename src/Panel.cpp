@@ -272,52 +272,112 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
 {
     if (!directory) return FALSE;
     const std::wstring dir(directory);
+
     if (dir == L"\\" || dir.empty())
     {
         if (!Repository.empty())
         {
-            Repository.clear(); CurrentBranch.clear(); DefaultBranch.clear(); CurrentPath.clear(); Branches.clear();
-            return Reload() ? TRUE : FALSE;
+            const std::wstring oldRepository = Repository;
+            const std::wstring oldBranch = CurrentBranch;
+            const std::wstring oldDefaultBranch = DefaultBranch;
+            const std::wstring oldPath = CurrentPath;
+            const std::vector<GitHubBranch> oldBranches = Branches;
+            Repository.clear();
+            CurrentBranch.clear();
+            DefaultBranch.clear();
+            CurrentPath.clear();
+            Branches.clear();
+            if (Reload()) return TRUE;
+            Repository = oldRepository;
+            CurrentBranch = oldBranch;
+            DefaultBranch = oldDefaultBranch;
+            CurrentPath = oldPath;
+            Branches = oldBranches;
+            return FALSE;
         }
+        const std::wstring oldPath = CurrentPath;
         CurrentPath.clear();
-        return Reload() ? TRUE : FALSE;
+        if (Reload()) return TRUE;
+        CurrentPath = oldPath;
+        return FALSE;
     }
+
     if (dir == L"..")
     {
         if (!CurrentPath.empty())
         {
+            const std::wstring oldPath = CurrentPath;
             const auto pos = CurrentPath.find_last_of(L'/');
             CurrentPath = pos == std::wstring::npos ? L"" : CurrentPath.substr(0, pos);
-            return Reload() ? TRUE : FALSE;
+            if (Reload()) return TRUE;
+            CurrentPath = oldPath;
+            return FALSE;
         }
         if (!Repository.empty())
         {
-            Repository.clear(); CurrentBranch.clear(); DefaultBranch.clear(); Branches.clear();
-            return Reload() ? TRUE : FALSE;
+            const std::wstring oldRepository = Repository;
+            const std::wstring oldBranch = CurrentBranch;
+            const std::wstring oldDefaultBranch = DefaultBranch;
+            const std::vector<GitHubBranch> oldBranches = Branches;
+            Repository.clear();
+            CurrentBranch.clear();
+            DefaultBranch.clear();
+            Branches.clear();
+            if (Reload()) return TRUE;
+            Repository = oldRepository;
+            CurrentBranch = oldBranch;
+            DefaultBranch = oldDefaultBranch;
+            Branches = oldBranches;
+            return FALSE;
         }
         return TRUE;
     }
+
     if (Repository.empty())
     {
         for (const auto& repository : Repositories)
         {
             if (_wcsicmp(repository.Name.c_str(), dir.c_str()) == 0)
             {
+                const std::wstring oldRepository = Repository;
+                const std::wstring oldBranch = CurrentBranch;
+                const std::wstring oldDefaultBranch = DefaultBranch;
+                const std::wstring oldPath = CurrentPath;
+                const std::vector<GitHubBranch> oldBranches = Branches;
                 Repository = repository.FullName;
                 DefaultBranch = repository.DefaultBranch;
                 CurrentBranch = DefaultBranch;
                 CurrentPath.clear();
-                if (!ReloadBranches()) { Repository.clear(); CurrentBranch.clear(); DefaultBranch.clear(); ShowError(); return FALSE; }
-                return Reload() ? TRUE : FALSE;
+                if (!ReloadBranches())
+                {
+                    Repository = oldRepository;
+                    CurrentBranch = oldBranch;
+                    DefaultBranch = oldDefaultBranch;
+                    CurrentPath = oldPath;
+                    Branches = oldBranches;
+                    ShowError();
+                    return FALSE;
+                }
+                if (Reload()) return TRUE;
+                Repository = oldRepository;
+                CurrentBranch = oldBranch;
+                DefaultBranch = oldDefaultBranch;
+                CurrentPath = oldPath;
+                Branches = oldBranches;
+                return FALSE;
             }
         }
         Error = L"Repository not found: " + dir;
         ShowError();
         return FALSE;
     }
+
+    const std::wstring oldPath = CurrentPath;
     if (!CurrentPath.empty()) CurrentPath += L'/';
     CurrentPath += dir;
-    return Reload() ? TRUE : FALSE;
+    if (Reload()) return TRUE;
+    CurrentPath = oldPath;
+    return FALSE;
 }
 
 bool FarGitHubPanel::EditFile(const std::wstring& path)
@@ -370,7 +430,6 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
             Error = L"Unable to access local path: " + localPath;
             return false;
         }
-
         if (attributes & FILE_ATTRIBUTE_DIRECTORY)
         {
             WIN32_FIND_DATAW data = {};
@@ -381,7 +440,6 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
                 Error = L"Unable to enumerate local directory: " + localPath;
                 return false;
             }
-
             bool hasEntries = false;
             bool success = true;
             do
@@ -391,44 +449,28 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
                 hasEntries = true;
                 const std::wstring childLocal = JoinLocalPath(localPath, name);
                 const std::wstring childRemote = remotePath + L"/" + name;
-                if (!uploadEntry(childLocal, childRemote))
-                {
-                    success = false;
-                    break;
-                }
+                if (!uploadEntry(childLocal, childRemote)) { success = false; break; }
             }
             while (FindNextFileW(handle, &data));
-
             FindClose(handle);
             if (!success) return false;
-            if (!hasEntries)
-                return client.CreateDirectoryEntry(remotePath, L"Create directory " + remotePath, Error);
+            if (!hasEntries) return client.CreateDirectoryEntry(remotePath, L"Create directory " + remotePath, Error);
             return true;
         }
-
         std::ifstream file(localPath, std::ios::binary);
-        if (!file)
-        {
-            Error = L"Unable to read local file: " + localPath;
-            return false;
-        }
+        if (!file) { Error = L"Unable to read local file: " + localPath; return false; }
         const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         std::wstring sha;
         std::string oldContent;
         std::wstring lookupError;
         if (!client.GetFile(remotePath, oldContent, sha, lookupError))
         {
-            if (!IsNotFound(lookupError))
-            {
-                Error = lookupError.empty() ? L"Unable to check remote file." : lookupError;
-                return false;
-            }
+            if (!IsNotFound(lookupError)) { Error = lookupError.empty() ? L"Unable to check remote file." : lookupError; return false; }
             sha.clear();
         }
         if (!client.PutFile(remotePath, content, sha, L"Upload " + remotePath, Error)) return false;
         return true;
     };
-
     for (size_t i = 0; i < count; ++i)
     {
         const std::wstring local = JoinLocalPath(sourcePath, items[i].FileName);
@@ -451,11 +493,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         std::wstring probeError;
         if (!client.GetEntries(remote, children, probeError))
         {
-            if (!IsNotFound(probeError))
-            {
-                Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError;
-                return false;
-            }
+            if (!IsNotFound(probeError)) { Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError; return false; }
             std::string content;
             std::wstring sha;
             if (!client.GetFile(remote, content, sha, Error)) return false;
@@ -498,9 +536,7 @@ bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring
         {
             if (children.empty()) return client.CreateDirectoryEntry(newName, L"Rename directory " + oldName, Error);
             for (const auto& child : children)
-            {
                 if (!renameEntry(oldName + L"/" + child.Name, newName + L"/" + child.Name)) return false;
-            }
             for (const auto& child : children)
             {
                 const std::wstring path = oldName + L"/" + child.Name;
@@ -511,11 +547,7 @@ bool FarGitHubPanel::RenameEntry(const std::wstring& oldPath, const std::wstring
             }
             return true;
         }
-        if (!IsNotFound(listError))
-        {
-            Error = listError.empty() ? L"Unable to read rename source." : listError;
-            return false;
-        }
+        if (!IsNotFound(listError)) { Error = listError.empty() ? L"Unable to read rename source." : listError; return false; }
         std::string content;
         std::wstring sha;
         if (!client.GetFile(oldName, content, sha, Error)) return false;
@@ -539,11 +571,7 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
             for (const auto& child : children) if (!removeEntry(path + L"/" + child.Name)) return false;
             return true;
         }
-        if (!IsNotFound(listError))
-        {
-            Error = listError.empty() ? L"Unable to read delete source." : listError;
-            return false;
-        }
+        if (!IsNotFound(listError)) { Error = listError.empty() ? L"Unable to read delete source." : listError; return false; }
         std::string content;
         std::wstring sha;
         if (!client.GetFile(path, content, sha, Error)) return false;
