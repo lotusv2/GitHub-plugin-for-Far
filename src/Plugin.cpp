@@ -106,13 +106,22 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
     return ActivePanel.get();
 }
 
-void WINAPI ClosePanelW(const ClosePanelInfo*)
+void WINAPI ClosePanelW(const ClosePanelInfo* info)
 {
+    const std::wstring diagnostic = !info ? L"ClosePanel: info=null" :
+        L"ClosePanel: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
+    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
     ActivePanel.reset();
 }
 
 intptr_t WINAPI GetFindDataW(GetFindDataInfo* info)
 {
+    const std::wstring diagnostic = !info ? L"GetFindData: info=null" :
+        L"GetFindData: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
+    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
+
     if (!info || !info->hPanel)
         return -1;
 
@@ -129,6 +138,11 @@ void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
 
 void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
 {
+    const std::wstring diagnostic = !info ? L"GetOpenPanelInfo: info=null" :
+        L"GetOpenPanelInfo: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
+    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
+    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
+
     if (!info || !info->hPanel)
         return;
 
