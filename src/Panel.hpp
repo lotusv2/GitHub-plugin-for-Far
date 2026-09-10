@@ -20,7 +20,11 @@ public:
     intptr_t GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES mode);
     intptr_t DeleteFiles(PluginPanelItem* items, size_t count, OPERATION_MODES mode);
     void ReloadSettings();
-    std::wstring GetDiagnosticState() const;
+
+    std::wstring GetDiagnosticState() const
+    {
+        return L"Repository=[" + Repository + L"] CurrentPath=[" + CurrentPath + L"] Error=[" + Error + L"]";
+    }
 
 private:
     friend intptr_t ProcessRenameInput(FarGitHubPanel* panel);
