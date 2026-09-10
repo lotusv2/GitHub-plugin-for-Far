@@ -74,10 +74,15 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
     info->CommandPrefix = L"gh";
 }
 
-HANDLE WINAPI OpenW(const OpenInfo*)
+HANDLE WINAPI OpenW(const OpenInfo* info)
 {
-    ActivePanel = std::make_unique<FarGitHubPanel>();
-    return ActivePanel.get();
+    if (!info)
+        return nullptr;
+
+    auto panel = std::make_unique<FarGitHubPanel>();
+    auto* handle = panel.get();
+    ActivePanel = std::move(panel);
+    return handle;
 }
 
 void WINAPI ClosePanelW(const ClosePanelInfo*)
@@ -87,16 +92,27 @@ void WINAPI ClosePanelW(const ClosePanelInfo*)
 
 intptr_t WINAPI GetFindDataW(GetFindDataInfo* info)
 {
+    if (!info || !info->hPanel)
+        return -1;
+
     return static_cast<FarGitHubPanel*>(info->hPanel)->GetFindData(&info->PanelItem, &info->ItemsNumber, info->OpMode);
 }
 
 void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
 {
+    if (!info || !info->hPanel)
+        return;
+
     static_cast<FarGitHubPanel*>(info->hPanel)->FreeFindData(info->PanelItem, info->ItemsNumber);
 }
 
 void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
 {
+    if (!info || !info->hPanel)
+        return;
+
+    *info = {};
+    info->StructSize = sizeof(*info);
     static_cast<FarGitHubPanel*>(info->hPanel)->GetOpenPanelInfo(info);
 }
 
