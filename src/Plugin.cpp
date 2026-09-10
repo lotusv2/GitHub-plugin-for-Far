@@ -153,6 +153,11 @@ void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
 
     info->StructSize = sizeof(*info);
     static_cast<FarGitHubPanel*>(info->hPanel)->GetOpenPanelInfo(info);
+
+    // Far закрывает plugin panel, если CurDir пустой. Логический корень
+    // нашего plugin panel также должен иметь непустое представление.
+    if (!info->CurDir || !*info->CurDir)
+        info->CurDir = L"\\";
 }
 
 intptr_t WINAPI SetDirectoryW(const SetDirectoryInfo* info)
