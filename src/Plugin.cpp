@@ -128,7 +128,7 @@ intptr_t WINAPI GetFindDataW(GetFindDataInfo* info)
     // Временный ABI-тест: не вызываем код панели и не работаем с GitHub.
     info->PanelItem = nullptr;
     info->ItemsNumber = 0;
-    return 0;
+    return 1;
 }
 
 void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
