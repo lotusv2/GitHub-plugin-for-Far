@@ -167,7 +167,8 @@ intptr_t WINAPI SetDirectoryW(const SetDirectoryInfo* info)
     const std::wstring diagnostic =
         L"SetDirectory: Dir=[" + directory + L"] OpMode=" +
         std::to_wstring(static_cast<unsigned long long>(info->OpMode)) +
-        L" Result=" + std::to_wstring(static_cast<long long>(result));
+        L" Result=" + std::to_wstring(static_cast<long long>(result)) +
+        L" " + panel->GetDiagnosticState();
     const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
     GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
 
