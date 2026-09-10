@@ -160,12 +160,18 @@ intptr_t WINAPI SetDirectoryW(const SetDirectoryInfo* info)
     if (!info || !info->hPanel)
         return FALSE;
 
+    auto* panel = static_cast<FarGitHubPanel*>(info->hPanel);
     const std::wstring directory = info->Dir ? info->Dir : L"<null>";
-    const std::wstring diagnostic = L"SetDirectory: Dir=[" + directory + L"] OpMode=" + std::to_wstring(static_cast<unsigned long long>(info->OpMode));
+    const intptr_t result = panel->SetDirectory(info->Dir, info->OpMode);
+
+    const std::wstring diagnostic =
+        L"SetDirectory: Dir=[" + directory + L"] OpMode=" +
+        std::to_wstring(static_cast<unsigned long long>(info->OpMode)) +
+        L" Result=" + std::to_wstring(static_cast<long long>(result));
     const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
     GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
 
-    return static_cast<FarGitHubPanel*>(info->hPanel)->SetDirectory(info->Dir, info->OpMode);
+    return result;
 }
 
 intptr_t WINAPI ProcessHostFileW(const ProcessHostFileInfo* info)
