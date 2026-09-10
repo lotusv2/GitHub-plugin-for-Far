@@ -138,11 +138,6 @@ void WINAPI FreeFindDataW(const FreeFindDataInfo* info)
 
 void WINAPI GetOpenPanelInfoW(OpenPanelInfo* info)
 {
-    const std::wstring diagnostic = !info ? L"GetOpenPanelInfo: info=null" :
-        L"GetOpenPanelInfo: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
-    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
-
     if (!info || !info->hPanel)
         return;
 
