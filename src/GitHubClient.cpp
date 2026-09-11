@@ -258,24 +258,35 @@ bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>
 {
     entries.clear();
     if (Repository.empty()) { error = L"Repository is not selected"; return false; }
-    std::wstring api = L"/repos/" + Repository + L"/contents/" + UrlPath(path);
+    std::wstring api = L"/repos/" + Repository + L"/contents";
+    if (!path.empty()) api += L"/" + UrlPath(path);
     if (!Branch.empty()) api += L"?ref=" + UrlPath(Branch);
     std::string response;
     if (!Request(L"GET", api, {}, response, error)) return false;
-    const auto objects = JsonObjects(response);
-    if (!objects.empty())
+
+    // GitHub возвращает объект для файла и массив объектов для каталога.
+    // Проверяем форму корневого JSON, а не поле type внутри первого элемента массива.
+    size_t first = 0;
+    while (first < response.size() && std::isspace(static_cast<unsigned char>(response[first]))) ++first;
+    if (first >= response.size()) { error = L"Invalid GitHub contents response"; return false; }
+
+    if (response[first] == '{')
     {
-        for (const auto& object : objects)
+        if (!path.empty() && JsonString(response, "type") == L"file")
         {
-            GitHubEntry entry;
-            entry.Name = JsonString(object, "name");
-            entry.Type = JsonString(object, "type");
-            entry.Sha = JsonString(object, "sha");
-            entry.Size = JsonNumber(object, "size");
-            if (!entry.Name.empty()) entries.push_back(entry);
+            error = L"HTTP 404: Path is not a directory";
+            return false;
         }
-        return true;
+        error = L"Invalid GitHub contents response";
+        return false;
     }
+
+    if (response[first] != '[')
+    {
+        error = L"Invalid GitHub contents response";
+        return false;
+    }
+
     for (const auto& object : JsonObjects(response))
     {
         GitHubEntry entry;
