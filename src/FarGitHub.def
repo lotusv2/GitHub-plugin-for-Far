@@ -12,6 +12,7 @@ EXPORTS
     ProcessHostFileW
     ProcessPanelInputW
     ProcessEditorEventW
+    ProcessSynchroEventW
     MakeDirectoryW
     PutFilesW
     GetFilesW
