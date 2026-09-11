@@ -343,6 +343,7 @@ intptr_t FarGitHubPanel::SetDirectory(const wchar_t* directory, OPERATION_MODES)
             const std::wstring oldRepository = Repository;
             const std::wstring oldBranch = CurrentBranch;
             const std::wstring oldDefaultBranch = DefaultBranch;
+            const std::wstring oldPath = CurrentPath;
             const std::vector<GitHubBranch> oldBranches = Branches;
             Repository.clear();
             CurrentBranch.clear();
