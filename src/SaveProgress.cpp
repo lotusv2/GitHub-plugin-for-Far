@@ -17,7 +17,8 @@ const GUID ProgressDialogGuid = { 0x3d5b7a21, 0x4c8e, 0x47a2, { 0x91, 0x35, 0x62
 enum class SyncRequestType : unsigned long
 {
     Progress = 0x47504850,
-    EditorSave = 0x47504853
+    EditorSave = 0x47504853,
+    EditorExit = 0x47504845
 };
 
 struct SyncRequest
@@ -43,6 +44,14 @@ struct EditorSaveRequest : SyncRequest
     EditorSaveRequest()
     {
         Type = SyncRequestType::EditorSave;
+    }
+};
+
+struct EditorExitRequest : SyncRequest
+{
+    EditorExitRequest()
+    {
+        Type = SyncRequestType::EditorExit;
     }
 };
 
@@ -92,6 +101,15 @@ DWORD WINAPI EditorSaveRequestProc(LPVOID parameter)
     auto* request = static_cast<EditorSaveRequest*>(parameter);
 
     // Переносим сетевую операцию из ProcessEditorInputW в главный поток Far Manager.
+    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, request);
+    return 0;
+}
+
+DWORD WINAPI EditorExitRequestProc(LPVOID parameter)
+{
+    auto* request = static_cast<EditorExitRequest*>(parameter);
+
+    // Выполняем запрос выхода после возврата Far из ProcessEditorInputW.
     GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, request);
     return 0;
 }
@@ -289,6 +307,14 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
         return 0;
     }
 
+    if (request->Type == SyncRequestType::EditorExit)
+    {
+        auto* exitRequest = static_cast<EditorExitRequest*>(request);
+        delete exitRequest;
+        HandleGitHubEditorExitRequest();
+        return 0;
+    }
+
     if (request->Type != SyncRequestType::Progress)
         return 0;
 
@@ -318,7 +344,27 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
     const bool shift = (state & SHIFT_PRESSED) != 0;
 
     if (!ctrl && !alt && !shift && (key.wVirtualKeyCode == VK_ESCAPE || key.wVirtualKeyCode == VK_F10))
-        return HandleGitHubEditorExitRequest() ? 1 : 0;
+    {
+        auto* request = new (std::nothrow) EditorExitRequest();
+        if (!request)
+        {
+            const wchar_t* message[] = { L"GitHub", L"Не удалось запланировать выход из редактора." };
+            GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+            return 1;
+        }
+
+        HANDLE thread = CreateThread(nullptr, 0, EditorExitRequestProc, request, 0, nullptr);
+        if (!thread)
+        {
+            delete request;
+            const wchar_t* message[] = { L"GitHub", L"Не удалось запланировать выход из редактора." };
+            GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+            return 1;
+        }
+
+        CloseHandle(thread);
+        return 1;
+    }
 
     if (key.wVirtualKeyCode != VK_F2 || ctrl || alt || shift)
         return 0;
