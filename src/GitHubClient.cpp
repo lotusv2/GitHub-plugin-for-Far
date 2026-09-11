@@ -258,40 +258,24 @@ bool GitHubClient::GetEntries(const std::wstring& path, std::vector<GitHubEntry>
 {
     entries.clear();
     if (Repository.empty()) { error = L"Repository is not selected"; return false; }
-    std::wstring api = L"/repos/" + Repository + L"/contents";
-    if (!path.empty()) api += L"/" + UrlPath(path);
+    std::wstring api = L"/repos/" + Repository + L"/contents/" + UrlPath(path);
     if (!Branch.empty()) api += L"?ref=" + UrlPath(Branch);
     std::string response;
     if (!Request(L"GET", api, {}, response, error)) return false;
-
-    // GitHub возвращает объект для файла и массив объектов для каталога.
-    // Проверяем форму корневого JSON, а не поле type внутри первого элемента массива.
-    size_t first = 0;
-    while (first < response.size() && std::isspace(static_cast<unsigned char>(response[first]))) ++first;
-
-    if (first >= response.size())
+    const auto objects = JsonObjects(response);
+    if (!objects.empty())
     {
-        error = L"Invalid GitHub contents response";
-        return false;
-    }
-
-    if (response[first] == '{')
-    {
-        if (!path.empty() && JsonString(response, "type") == L"file")
+        for (const auto& object : objects)
         {
-            error = L"HTTP 404: Path is not a directory";
-            return false;
+            GitHubEntry entry;
+            entry.Name = JsonString(object, "name");
+            entry.Type = JsonString(object, "type");
+            entry.Sha = JsonString(object, "sha");
+            entry.Size = JsonNumber(object, "size");
+            if (!entry.Name.empty()) entries.push_back(entry);
         }
-        error = L"Invalid GitHub contents response";
-        return false;
+        return true;
     }
-
-    if (response[first] != '[')
-    {
-        error = L"Invalid GitHub contents response";
-        return false;
-    }
-
     for (const auto& object : JsonObjects(response))
     {
         GitHubEntry entry;
@@ -356,11 +340,11 @@ bool GitHubClient::PutFile(const std::wstring& path, const std::string& content,
     if (!Branch.empty()) body += ",\"branch\":\"" + JsonEscape(Utf8(Branch)) + "\"";
     body += "}";
 
-    HANDLE progress = ShowGitHubProgress(L"Отправка изменений на GitHub...");
-    std::string response;
-    const bool result = Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);
-    CloseGitHubProgress(progress);
-    return result;
+    return RunGitHubProgress(L"Отправка изменений на GitHub...", [&]()
+    {
+        std::string response;
+        return Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);
+    });
 }
 
 bool GitHubClient::DeleteFile(const std::wstring& path, const std::wstring& sha, const std::wstring& message, std::wstring& error)
