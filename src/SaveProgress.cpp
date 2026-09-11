@@ -92,15 +92,12 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
     return dialog;
 }
 
-bool ProcessEditorSave(const EditorSaveFile* saveFile)
+bool SaveActiveEditorToGitHub()
 {
-    if (!saveFile || !saveFile->FileName)
-        return false;
-
     EditorSession session;
     {
         std::lock_guard<std::mutex> lock(EditorSessionMutex);
-        if (!EditorSessionActive || ActiveEditorSession.TempFile != saveFile->FileName)
+        if (!EditorSessionActive)
             return false;
         session = ActiveEditorSession;
     }
@@ -124,7 +121,7 @@ bool ProcessEditorSave(const EditorSaveFile* saveFile)
     {
         const wchar_t* message[] = { L"GitHub", error.c_str() };
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
-        return true;
+        return false;
     }
 
     std::string refreshedContent;
@@ -207,15 +204,33 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
     return 0;
 }
 
-intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
+intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
 {
-    if (!info || info->StructSize < sizeof(*info) || info->Event != EE_SAVE)
+    if (!info || info->StructSize < sizeof(*info))
         return 0;
 
-    const auto* saveFile = static_cast<const EditorSaveFile*>(info->Param);
-    if (!saveFile)
+    const INPUT_RECORD& record = info->Rec;
+    if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
         return 0;
 
-    ProcessEditorSave(saveFile);
-    return 0;
+    const auto& key = record.Event.KeyEvent;
+    const DWORD state = key.dwControlKeyState;
+    const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
+    const bool alt = (state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) != 0;
+    const bool shift = (state & SHIFT_PRESSED) != 0;
+
+    if (key.wVirtualKeyCode != VK_F2 || ctrl || alt || shift)
+        return 0;
+
+    // Сначала сохраняем текущий буфер редактора в локальный временный файл.
+    // После этого отправляем уже фактически сохранённое содержимое на GitHub.
+    if (!GPluginInfo.EditorControl(ECTL_SAVEFILE, nullptr))
+    {
+        const wchar_t* message[] = { L"GitHub", L"Не удалось сохранить файл в редакторе." };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+        return 1;
+    }
+
+    SaveActiveEditorToGitHub();
+    return 1;
 }
