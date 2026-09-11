@@ -49,6 +49,8 @@ add_library(FarGitHub SHARED
     src/Panel.hpp
     src/PanelOperations.cpp
     src/PanelRename.cpp
+    src/SaveProgress.cpp
+    src/SaveProgress.hpp
     src/Settings.cpp
     src/Settings.hpp
     src/resource.rc
@@ -57,7 +59,7 @@ add_library(FarGitHub SHARED
 
 target_compile_definitions(FarGitHub PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(FarGitHub PRIVATE /W4 /EHsc /FIwindows.h)
-target_link_libraries(FarGitHub PRIVATE winhttp crypt32)
+target_link_libraries(FarGitHub PRIVATE winhttp crypt32 user32)
 
 target_include_directories(FarGitHub PRIVATE
     ${FAR_SDK_DIR}
