@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <functional>
-#include <thread>
 
 namespace
 {
@@ -15,7 +14,6 @@ struct ProgressContext
     std::function<bool()> Operation;
     std::atomic<bool> Finished{ false };
     std::atomic<bool> Result{ false };
-    bool AutoDelete = false;
 };
 
 intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param1, void* param2)
@@ -25,7 +23,6 @@ intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param
 
     if (message == DN_CLOSE)
     {
-        // Пока операция не завершена, закрывать диалог нельзя.
         auto* context = reinterpret_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
         if (!context || !context->Finished.load())
             return FALSE;
@@ -35,30 +32,29 @@ intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param
     return GPluginInfo.DefDlgProc(hDlg, message, param1, param2);
 }
 
-void NotifyProgressFinished(ProgressContext* context)
-{
-    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, context);
-}
-
 DWORD WINAPI ProgressWorkerProc(LPVOID parameter)
 {
     auto* context = static_cast<ProgressContext*>(parameter);
     context->Result = context->Operation();
     context->Finished = true;
-    NotifyProgressFinished(context);
+
+    // ACTL_SYNCHRO не обрабатывается гарантированно внутри DialogRun.
+    // Закрываем модальный Far-диалог сразу после завершения операции.
+    if (context->Dialog != INVALID_HANDLE_VALUE)
+        GPluginInfo.SendDlgMessage(context->Dialog, DM_CLOSE, 0, nullptr);
+
     return 0;
 }
 
-HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text, bool nonModal)
+HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
 {
     FarDialogItem items[] =
     {
         { DI_DOUBLEBOX, 0, 0, 48, 4, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 1, 46, 1, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, text, 0, 0, { 0, 0 } },
-        { DI_TEXT,      2, 2, 46, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Пожалуйста, подождите...", 0, 0, { 0, 0 } }
+        { DI_TEXT,      2, 2, 46, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Please wait...", 0, 0, { 0, 0 } }
     };
 
-    const FARDIALOGFLAGS flags = FDLG_SMALLDIALOG | (nonModal ? FDLG_NONMODAL : FDLG_NONE);
     const HANDLE dialog = GPluginInfo.DialogInit(
         &MainGuid,
         &ProgressDialogGuid,
@@ -70,7 +66,7 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text, bool 
         items,
         std::size(items),
         0,
-        flags,
+        FDLG_SMALLDIALOG,
         ProgressDialogProc,
         context);
 
@@ -85,8 +81,8 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
 {
     ProgressContext context;
     context.Operation = operation;
+    context.Dialog = CreateProgressDialog(&context, text);
 
-    context.Dialog = CreateProgressDialog(&context, text, false);
     if (context.Dialog == INVALID_HANDLE_VALUE)
         return operation();
 
@@ -106,48 +102,10 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     return context.Result.load();
 }
 
-void ShowGitHubProgressTimed(const wchar_t* text, DWORD timeoutMs)
-{
-    auto* context = new ProgressContext();
-    context->AutoDelete = true;
-
-    context->Dialog = CreateProgressDialog(context, text, true);
-    if (context->Dialog == INVALID_HANDLE_VALUE)
-    {
-        delete context;
-        return;
-    }
-
-    std::thread([context, timeoutMs]()
-    {
-        Sleep(timeoutMs);
-        context->Finished = true;
-        NotifyProgressFinished(context);
-    }).detach();
-}
-
-intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
-{
-    if (!info || info->Event != SE_COMMONSYNCHRO || !info->Param)
-        return 0;
-
-    auto* context = static_cast<ProgressContext*>(info->Param);
-    if (context->Dialog != INVALID_HANDLE_VALUE)
-        GPluginInfo.SendDlgMessage(context->Dialog, DM_CLOSE, 0, nullptr);
-
-    if (context->AutoDelete)
-        delete context;
-
-    return 0;
-}
-
 intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
 {
-    if (!info)
-        return 0;
-
-    if (info->Event == EE_SAVE)
-        ShowGitHubProgressTimed(L"Сохранение файла...", 1200);
-
+    // F2 сохраняет только временный локальный файл редактора.
+    // Отправка на GitHub выполняется после выхода из редактора.
+    (void)info;
     return 0;
 }
