@@ -222,9 +222,9 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
     if (key.wVirtualKeyCode != VK_F2 || ctrl || alt || shift)
         return 0;
 
-    // Сначала сохраняем текущий буфер редактора в локальный временный файл.
-    // После этого отправляем уже фактически сохранённое содержимое на GitHub.
-    if (!GPluginInfo.EditorControl(ECTL_SAVEFILE, nullptr))
+    // Текущий редактор доступен из ProcessEditorInputW по идентификатору -1.
+    // Сначала сохраняем текущий буфер во временный файл редакторской сессии.
+    if (!GPluginInfo.EditorControl(-1, ECTL_SAVEFILE, 0, nullptr))
     {
         const wchar_t* message[] = { L"GitHub", L"Не удалось сохранить файл в редакторе." };
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
