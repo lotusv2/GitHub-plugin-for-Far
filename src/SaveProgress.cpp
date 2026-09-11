@@ -21,14 +21,6 @@ intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param
     if (message == DN_INITDIALOG)
         return TRUE;
 
-    if (message == DN_ENTERIDLE)
-    {
-        auto* context = reinterpret_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
-        if (context && context->Finished.load())
-            GPluginInfo.SendDlgMessage(hDlg, DM_CLOSE, 0, nullptr);
-        return TRUE;
-    }
-
     if (message == DN_CLOSE)
     {
         auto* context = reinterpret_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
@@ -45,6 +37,9 @@ DWORD WINAPI ProgressWorkerProc(LPVOID parameter)
     auto* context = static_cast<ProgressContext*>(parameter);
     context->Result = context->Operation();
     context->Finished = true;
+
+    // Передаём завершение операции в главный поток Far Manager.
+    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, context);
     return 0;
 }
 
@@ -102,6 +97,21 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     CloseHandle(thread);
     GPluginInfo.DialogFree(context.Dialog);
     return context.Result.load();
+}
+
+intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
+{
+    if (!info || info->StructSize < sizeof(*info) || info->Event != SE_COMMONSYNCHRO)
+        return 0;
+
+    auto* context = static_cast<ProgressContext*>(info->Param);
+    if (!context || !context->Finished.load())
+        return 0;
+
+    if (context->Dialog != INVALID_HANDLE_VALUE)
+        GPluginInfo.SendDlgMessage(context->Dialog, DM_CLOSE, 0, nullptr);
+
+    return 0;
 }
 
 intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
