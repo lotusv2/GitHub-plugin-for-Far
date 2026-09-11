@@ -25,18 +25,25 @@ struct SyncRequest
     SyncRequestType Type;
 };
 
-struct ProgressContext
+struct ProgressContext : SyncRequest
 {
-    SyncRequestType Type = SyncRequestType::Progress;
     HANDLE Dialog = INVALID_HANDLE_VALUE;
     std::function<bool()> Operation;
     std::atomic<bool> Finished{ false };
     std::atomic<bool> Result{ false };
+
+    ProgressContext()
+    {
+        Type = SyncRequestType::Progress;
+    }
 };
 
-struct EditorSaveRequest
+struct EditorSaveRequest : SyncRequest
 {
-    SyncRequestType Type = SyncRequestType::EditorSave;
+    EditorSaveRequest()
+    {
+        Type = SyncRequestType::EditorSave;
+    }
 };
 
 struct EditorSession
