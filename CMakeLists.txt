@@ -58,7 +58,7 @@ add_library(FarGitHub SHARED
 )
 
 target_compile_definitions(FarGitHub PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_compile_options(FarGitHub PRIVATE /W4 /EHsc /FIwindows.h)
+target_compile_options(FarGitHub PRIVATE /W4 /EHsc /utf-8 /FIwindows.h)
 target_link_libraries(FarGitHub PRIVATE winhttp crypt32 user32)
 
 target_include_directories(FarGitHub PRIVATE
