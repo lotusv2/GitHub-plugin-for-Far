@@ -1,186 +1,143 @@
 #include "SaveProgress.hpp"
-#include "plugin.hpp"
+#include "Plugin.hpp"
 
-#include <string>
+#include <atomic>
+#include <functional>
+#include <thread>
 
 namespace
 {
-const wchar_t* WindowClassName = L"FarGitHubSaveProgress";
+const GUID ProgressDialogGuid = { 0x3d5b7a21, 0x4c8e, 0x47a2, { 0x91, 0x35, 0x62, 0x7a, 0x18, 0x4e, 0x9b, 0x50 } };
 
-struct ProgressState
+struct ProgressContext
 {
-    HANDLE Ready = nullptr;
-    HANDLE Thread = nullptr;
-    HWND Window = nullptr;
-    DWORD ThreadId = 0;
-    std::wstring Text;
-    DWORD TimeoutMs = 0;
+    HANDLE Dialog = INVALID_HANDLE_VALUE;
+    std::function<bool()> Operation;
+    std::atomic<bool> Finished{ false };
+    std::atomic<bool> Result{ false };
+    bool AutoDelete = false;
 };
 
-LRESULT CALLBACK ProgressWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param1, void* param2)
 {
-    if (message == WM_CREATE)
+    if (message == DN_INITDIALOG)
+        return TRUE;
+
+    if (message == DN_CLOSE)
     {
-        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
-        const auto* state = static_cast<const ProgressState*>(create->lpCreateParams);
-        CreateWindowExW(0, L"STATIC", state->Text.c_str(), WS_CHILD | WS_VISIBLE,
-                        16, 18, 360, 28, window, nullptr, GetModuleHandleW(nullptr), nullptr);
-        return 0;
+        // Пока операция не завершена, закрывать диалог нельзя.
+        auto* context = static_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
+        if (!context || !context->Finished.load())
+            return FALSE;
+        return TRUE;
     }
-    if (message == WM_TIMER)
-    {
-        DestroyWindow(window);
-        return 0;
-    }
-    if (message == WM_CLOSE)
-    {
-        DestroyWindow(window);
-        return 0;
-    }
-    if (message == WM_DESTROY)
-    {
-        KillTimer(window, 1);
-        PostQuitMessage(0);
-        return 0;
-    }
-    return DefWindowProcW(window, message, wParam, lParam);
+
+    return GPluginInfo.DefDlgProc(hDlg, message, param1, param2);
 }
 
-bool RegisterProgressClass()
+void NotifyProgressFinished(ProgressContext* context)
 {
-    static bool registered = false;
-    if (registered) return true;
-
-    WNDCLASSEXW cls = {};
-    cls.cbSize = sizeof(cls);
-    cls.lpfnWndProc = ProgressWindowProc;
-    cls.hInstance = GetModuleHandleW(nullptr);
-    cls.hCursor = LoadCursorW(nullptr, IDC_WAIT);
-    cls.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    cls.lpszClassName = WindowClassName;
-
-    if (!RegisterClassExW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-        return false;
-
-    registered = true;
-    return true;
+    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, context);
 }
 
-DWORD WINAPI ProgressThreadProc(LPVOID parameter)
+DWORD WINAPI ProgressWorkerProc(LPVOID parameter)
 {
-    auto* state = static_cast<ProgressState*>(parameter);
-    state->ThreadId = GetCurrentThreadId();
-
-    if (!RegisterProgressClass())
-    {
-        SetEvent(state->Ready);
-        delete state;
-        return 0;
-    }
-
-    const int width = 400;
-    const int height = 85;
-    const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
-    const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
-
-    state->Window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-                                    WindowClassName,
-                                    L"GitHub",
-                                    WS_POPUP | WS_CAPTION,
-                                    x, y, width, height,
-                                    nullptr, nullptr, GetModuleHandleW(nullptr), state);
-
-    if (state->Window)
-    {
-        ShowWindow(state->Window, SW_SHOWNORMAL);
-        UpdateWindow(state->Window);
-        if (state->TimeoutMs != 0)
-            SetTimer(state->Window, 1, state->TimeoutMs, nullptr);
-    }
-
-    SetEvent(state->Ready);
-
-    MSG message = {};
-    while (GetMessageW(&message, nullptr, 0, 0) > 0)
-    {
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
-    }
-
-    if (state->Window)
-        state->Window = nullptr;
-
-    if (state->TimeoutMs != 0)
-    {
-        CloseHandle(state->Ready);
-        delete state;
-    }
+    auto* context = static_cast<ProgressContext*>(parameter);
+    context->Result = context->Operation();
+    context->Finished = true;
+    NotifyProgressFinished(context);
     return 0;
 }
+
+HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text, bool nonModal)
+{
+    FarDialogItem items[] =
+    {
+        { DI_DOUBLEBOX, 0, 0, 48, 4, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 1, 46, 1, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, text, 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 2, 46, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Пожалуйста, подождите...", 0, 0, { 0, 0 } }
+    };
+
+    const FARDIALOGFLAGS flags = FDLG_SMALLDIALOG | (nonModal ? FDLG_NONMODAL : FDLG_NONE);
+    const HANDLE dialog = GPluginInfo.DialogInit(
+        &MainGuid,
+        &ProgressDialogGuid,
+        -1,
+        -1,
+        48,
+        4,
+        nullptr,
+        items,
+        std::size(items),
+        0,
+        flags,
+        ProgressDialogProc,
+        context);
+
+    if (dialog != INVALID_HANDLE_VALUE)
+        GPluginInfo.SendDlgMessage(dialog, DM_SETDLGDATA, 0, context);
+
+    return dialog;
+}
 }
 
-HANDLE ShowGitHubProgress(const wchar_t* text)
+bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation)
 {
-    auto* state = new ProgressState();
-    state->Text = text ? text : L"GitHub: выполняется операция...";
-    state->Ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!state->Ready)
+    ProgressContext context;
+    context.Operation = operation;
+
+    context.Dialog = CreateProgressDialog(&context, text, false);
+    if (context.Dialog == INVALID_HANDLE_VALUE)
+        return operation();
+
+    HANDLE thread = CreateThread(nullptr, 0, ProgressWorkerProc, &context, 0, nullptr);
+    if (!thread)
     {
-        delete state;
-        return INVALID_HANDLE_VALUE;
+        GPluginInfo.SendDlgMessage(context.Dialog, DM_CLOSE, 0, nullptr);
+        GPluginInfo.DialogFree(context.Dialog);
+        return operation();
     }
 
-    state->Thread = CreateThread(nullptr, 0, ProgressThreadProc, state, 0, &state->ThreadId);
-    if (!state->Thread)
-    {
-        CloseHandle(state->Ready);
-        delete state;
-        return INVALID_HANDLE_VALUE;
-    }
-
-    WaitForSingleObject(state->Ready, 2000);
-    return reinterpret_cast<HANDLE>(state);
-}
-
-void CloseGitHubProgress(HANDLE handle)
-{
-    if (!handle || handle == INVALID_HANDLE_VALUE)
-        return;
-
-    auto* state = reinterpret_cast<ProgressState*>(handle);
-    if (state->Window)
-        PostMessageW(state->Window, WM_CLOSE, 0, 0);
-    else
-        PostThreadMessageW(state->ThreadId, WM_QUIT, 0, 0);
-
-    WaitForSingleObject(state->Thread, INFINITE);
-    CloseHandle(state->Thread);
-    CloseHandle(state->Ready);
-    delete state;
+    GPluginInfo.DialogRun(context.Dialog);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    GPluginInfo.DialogFree(context.Dialog);
+    return context.Result.load();
 }
 
 void ShowGitHubProgressTimed(const wchar_t* text, DWORD timeoutMs)
 {
-    auto* state = new ProgressState();
-    state->Text = text ? text : L"GitHub: выполняется операция...";
-    state->TimeoutMs = timeoutMs;
-    state->Ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!state->Ready)
+    auto* context = new ProgressContext();
+    context->AutoDelete = true;
+
+    context->Dialog = CreateProgressDialog(context, text, true);
+    if (context->Dialog == INVALID_HANDLE_VALUE)
     {
-        delete state;
+        delete context;
         return;
     }
 
-    state->Thread = CreateThread(nullptr, 0, ProgressThreadProc, state, 0, &state->ThreadId);
-    if (!state->Thread)
+    std::thread([context, timeoutMs]()
     {
-        CloseHandle(state->Ready);
-        delete state;
-        return;
-    }
+        Sleep(timeoutMs);
+        context->Finished = true;
+        NotifyProgressFinished(context);
+    }).detach();
+}
 
-    CloseHandle(state->Thread);
-    WaitForSingleObject(state->Ready, 2000);
+intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
+{
+    if (!info || info->Event != SE_COMMONSYNCHRO || !info->Param)
+        return 0;
+
+    auto* context = static_cast<ProgressContext*>(info->Param);
+    if (context->Dialog != INVALID_HANDLE_VALUE)
+        GPluginInfo.SendDlgMessage(context->Dialog, DM_CLOSE, 0, nullptr);
+
+    if (context->AutoDelete)
+        delete context;
+
+    return 0;
 }
 
 intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
