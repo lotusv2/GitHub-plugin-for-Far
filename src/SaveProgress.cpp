@@ -1,8 +1,13 @@
 #include "SaveProgress.hpp"
 #include "Plugin.hpp"
+#include "GitHubClient.hpp"
 
 #include <atomic>
+#include <fstream>
 #include <functional>
+#include <iterator>
+#include <mutex>
+#include <string>
 
 namespace
 {
@@ -15,6 +20,20 @@ struct ProgressContext
     std::atomic<bool> Finished{ false };
     std::atomic<bool> Result{ false };
 };
+
+struct EditorSession
+{
+    std::wstring TempFile;
+    std::wstring RemotePath;
+    std::wstring RemoteSha;
+    std::wstring Token;
+    std::wstring Repository;
+    std::wstring Branch;
+};
+
+std::mutex EditorSessionMutex;
+EditorSession ActiveEditorSession;
+bool EditorSessionActive = false;
 
 intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param1, void* param2)
 {
@@ -72,6 +91,53 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
 
     return dialog;
 }
+
+bool ProcessEditorSave(const EditorSaveFile* saveFile)
+{
+    if (!saveFile || !saveFile->FileName)
+        return false;
+
+    EditorSession session;
+    {
+        std::lock_guard<std::mutex> lock(EditorSessionMutex);
+        if (!EditorSessionActive || ActiveEditorSession.TempFile != saveFile->FileName)
+            return false;
+        session = ActiveEditorSession;
+    }
+
+    std::ifstream file(session.TempFile, std::ios::binary);
+    if (!file)
+        return false;
+
+    const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    GitHubClient client(session.Token, session.Repository, session.Branch);
+    std::wstring error;
+
+    const bool saved = RunGitHubProgress(
+        L"Сохранение изменений на GitHub...",
+        [&client, &session, &content, &error]()
+        {
+            return client.PutFile(session.RemotePath, content, session.RemoteSha, L"Update " + session.RemotePath, error);
+        });
+
+    if (!saved)
+    {
+        const wchar_t* message[] = { L"GitHub", error.c_str() };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+        return true;
+    }
+
+    std::string refreshedContent;
+    std::wstring refreshedSha;
+    if (client.GetFile(session.RemotePath, refreshedContent, refreshedSha, error))
+    {
+        std::lock_guard<std::mutex> lock(EditorSessionMutex);
+        if (EditorSessionActive && ActiveEditorSession.TempFile == session.TempFile)
+            ActiveEditorSession.RemoteSha = refreshedSha;
+    }
+
+    return true;
+}
 }
 
 bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation)
@@ -99,6 +165,30 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     return context.Result.load();
 }
 
+void BeginGitHubEditorSession(const std::wstring& tempFile,
+                              const std::wstring& remotePath,
+                              const std::wstring& remoteSha,
+                              const std::wstring& token,
+                              const std::wstring& repository,
+                              const std::wstring& branch)
+{
+    std::lock_guard<std::mutex> lock(EditorSessionMutex);
+    ActiveEditorSession.TempFile = tempFile;
+    ActiveEditorSession.RemotePath = remotePath;
+    ActiveEditorSession.RemoteSha = remoteSha;
+    ActiveEditorSession.Token = token;
+    ActiveEditorSession.Repository = repository;
+    ActiveEditorSession.Branch = branch;
+    EditorSessionActive = true;
+}
+
+void EndGitHubEditorSession()
+{
+    std::lock_guard<std::mutex> lock(EditorSessionMutex);
+    ActiveEditorSession = {};
+    EditorSessionActive = false;
+}
+
 intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
 {
     if (!info || info->StructSize < sizeof(*info) || info->Event != SE_COMMONSYNCHRO)
@@ -116,8 +206,13 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
 
 intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
 {
-    // F2 сохраняет только временный локальный файл редактора.
-    // Отправка на GitHub выполняется после выхода из редактора.
-    (void)info;
+    if (!info || info->StructSize < sizeof(*info) || info->Event != EE_SAVE)
+        return 0;
+
+    const auto* saveFile = static_cast<const EditorSaveFile*>(info->Param);
+    if (!saveFile)
+        return 0;
+
+    ProcessEditorSave(saveFile);
     return 0;
 }
