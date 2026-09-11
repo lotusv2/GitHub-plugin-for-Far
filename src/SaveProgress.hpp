@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
-HANDLE ShowGitHubProgress(const wchar_t* text);
-void CloseGitHubProgress(HANDLE handle);
+#include <functional>
+
+bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation);
 void ShowGitHubProgressTimed(const wchar_t* text, DWORD timeoutMs);
