@@ -1,4 +1,5 @@
 #include "GitHubClient.hpp"
+#include "SaveProgress.hpp"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -354,8 +355,12 @@ bool GitHubClient::PutFile(const std::wstring& path, const std::string& content,
     if (!sha.empty()) body += ",\"sha\":\"" + JsonEscape(Utf8(sha)) + "\"";
     if (!Branch.empty()) body += ",\"branch\":\"" + JsonEscape(Utf8(Branch)) + "\"";
     body += "}";
+
+    HANDLE progress = ShowGitHubProgress(L"Отправка изменений на GitHub...");
     std::string response;
-    return Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);
+    const bool result = Request(L"PUT", L"/repos/" + Repository + L"/contents/" + UrlPath(path), body, response, error);
+    CloseGitHubProgress(progress);
+    return result;
 }
 
 bool GitHubClient::DeleteFile(const std::wstring& path, const std::wstring& sha, const std::wstring& message, std::wstring& error)
