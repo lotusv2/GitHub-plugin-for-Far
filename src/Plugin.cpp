@@ -60,7 +60,7 @@ void WINAPI SetStartupInfoW(const PluginStartupInfo* info)
 void WINAPI GetPluginInfoW(PluginInfo* info)
 {
     info->StructSize = sizeof(*info);
-    info->Flags = PF_NONE;
+    info->Flags = PF_EDITOR;
 
     static const wchar_t* menu[] = { L"GitHub" };
     info->PluginMenu.Guids = &MenuGuid;
