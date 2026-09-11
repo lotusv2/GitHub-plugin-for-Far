@@ -11,7 +11,7 @@ EXPORTS
     SetDirectoryW
     ProcessHostFileW
     ProcessPanelInputW
-    ProcessEditorEventW
+    ProcessEditorInputW
     ProcessSynchroEventW
     MakeDirectoryW
     PutFilesW
