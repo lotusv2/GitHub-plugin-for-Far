@@ -13,3 +13,5 @@ void BeginGitHubEditorSession(const std::wstring& tempFile,
                               const std::wstring& branch);
 
 std::wstring EndGitHubEditorSession();
+
+bool HandleGitHubEditorExitRequest();
