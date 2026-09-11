@@ -1,4 +1,5 @@
 #include "SaveProgress.hpp"
+#include "plugin.hpp"
 
 #include <string>
 
@@ -22,38 +23,26 @@ LRESULT CALLBACK ProgressWindowProc(HWND window, UINT message, WPARAM wParam, LP
     {
         const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
         const auto* state = static_cast<const ProgressState*>(create->lpCreateParams);
-        CreateWindowExW(
-            0,
-            L"STATIC",
-            state->Text.c_str(),
-            WS_CHILD | WS_VISIBLE,
-            16, 18, 360, 28,
-            window,
-            nullptr,
-            GetModuleHandleW(nullptr),
-            nullptr);
+        CreateWindowExW(0, L"STATIC", state->Text.c_str(), WS_CHILD | WS_VISIBLE,
+                        16, 18, 360, 28, window, nullptr, GetModuleHandleW(nullptr), nullptr);
         return 0;
     }
-
     if (message == WM_TIMER)
     {
         DestroyWindow(window);
         return 0;
     }
-
     if (message == WM_CLOSE)
     {
         DestroyWindow(window);
         return 0;
     }
-
     if (message == WM_DESTROY)
     {
         KillTimer(window, 1);
         PostQuitMessage(0);
         return 0;
     }
-
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
@@ -94,13 +83,12 @@ DWORD WINAPI ProgressThreadProc(LPVOID parameter)
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
-    state->Window = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        WindowClassName,
-        L"GitHub",
-        WS_POPUP | WS_CAPTION,
-        x, y, width, height,
-        nullptr, nullptr, GetModuleHandleW(nullptr), state);
+    state->Window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                                    WindowClassName,
+                                    L"GitHub",
+                                    WS_POPUP | WS_CAPTION,
+                                    x, y, width, height,
+                                    nullptr, nullptr, GetModuleHandleW(nullptr), state);
 
     if (state->Window)
     {
@@ -122,13 +110,11 @@ DWORD WINAPI ProgressThreadProc(LPVOID parameter)
     if (state->Window)
         state->Window = nullptr;
 
-    const bool timed = state->TimeoutMs != 0;
-    if (timed)
+    if (state->TimeoutMs != 0)
     {
         CloseHandle(state->Ready);
         delete state;
     }
-
     return 0;
 }
 }
@@ -203,9 +189,7 @@ intptr_t WINAPI ProcessEditorEventW(const ProcessEditorEventInfo* info)
         return 0;
 
     if (info->Event == EE_SAVE)
-    {
         ShowGitHubProgressTimed(L"Сохранение файла...", 1200);
-    }
 
     return 0;
 }
