@@ -12,4 +12,4 @@ void BeginGitHubEditorSession(const std::wstring& tempFile,
                               const std::wstring& repository,
                               const std::wstring& branch);
 
-void EndGitHubEditorSession();
+std::wstring EndGitHubEditorSession();
