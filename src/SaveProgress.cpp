@@ -7,18 +7,36 @@
 #include <functional>
 #include <iterator>
 #include <mutex>
+#include <new>
 #include <string>
 
 namespace
 {
 const GUID ProgressDialogGuid = { 0x3d5b7a21, 0x4c8e, 0x47a2, { 0x91, 0x35, 0x62, 0x7a, 0x18, 0x4e, 0x9b, 0x50 } };
 
+enum class SyncRequestType : unsigned long
+{
+    Progress = 0x47504850,
+    EditorSave = 0x47504853
+};
+
+struct SyncRequest
+{
+    SyncRequestType Type;
+};
+
 struct ProgressContext
 {
+    SyncRequestType Type = SyncRequestType::Progress;
     HANDLE Dialog = INVALID_HANDLE_VALUE;
     std::function<bool()> Operation;
     std::atomic<bool> Finished{ false };
     std::atomic<bool> Result{ false };
+};
+
+struct EditorSaveRequest
+{
+    SyncRequestType Type = SyncRequestType::EditorSave;
 };
 
 struct EditorSession
@@ -59,6 +77,15 @@ DWORD WINAPI ProgressWorkerProc(LPVOID parameter)
 
     // Передаём завершение операции в главный поток Far Manager.
     GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, context);
+    return 0;
+}
+
+DWORD WINAPI EditorSaveRequestProc(LPVOID parameter)
+{
+    auto* request = static_cast<EditorSaveRequest*>(parameter);
+
+    // Переносим сетевую операцию из ProcessEditorInputW в главный поток Far Manager.
+    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, request);
     return 0;
 }
 
@@ -119,7 +146,7 @@ bool SaveActiveEditorToGitHub()
 
     if (!saved)
     {
-        const wchar_t* message[] = { L"GitHub", error.c_str() };
+        const wchar_t* message[] = { L"GitHub", error.empty() ? L"Не удалось сохранить изменения на GitHub." : error.c_str() };
         GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
         return false;
     }
@@ -135,7 +162,6 @@ bool SaveActiveEditorToGitHub()
 
     return true;
 }
-
 }
 
 bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation)
@@ -191,11 +217,24 @@ std::wstring EndGitHubEditorSession()
 
 intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
 {
-    if (!info || info->StructSize < sizeof(*info) || info->Event != SE_COMMONSYNCHRO)
+    if (!info || info->StructSize < sizeof(*info) || info->Event != SE_COMMONSYNCHRO || !info->Param)
         return 0;
 
-    auto* context = static_cast<ProgressContext*>(info->Param);
-    if (!context || !context->Finished.load())
+    auto* request = static_cast<SyncRequest*>(info->Param);
+
+    if (request->Type == SyncRequestType::EditorSave)
+    {
+        auto* saveRequest = static_cast<EditorSaveRequest*>(request);
+        delete saveRequest;
+        SaveActiveEditorToGitHub();
+        return 0;
+    }
+
+    if (request->Type != SyncRequestType::Progress)
+        return 0;
+
+    auto* context = static_cast<ProgressContext*>(request);
+    if (!context->Finished.load())
         return 0;
 
     if (context->Dialog != INVALID_HANDLE_VALUE)
@@ -222,8 +261,9 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
     if (key.wVirtualKeyCode != VK_F2 || ctrl || alt || shift)
         return 0;
 
-    // Текущий редактор доступен из ProcessEditorInputW по идентификатору -1.
-    // Сначала сохраняем текущий буфер во временный файл редакторской сессии.
+    // Сначала сохраняем буфер штатной командой Far. Сетевую операцию нельзя
+    // выполнять непосредственно внутри ProcessEditorInputW: этот callback
+    // вызывается из цикла обработки клавиши редактора.
     if (!GPluginInfo.EditorControl(-1, ECTL_SAVEFILE, 0, nullptr))
     {
         const wchar_t* message[] = { L"GitHub", L"Не удалось сохранить файл в редакторе." };
@@ -231,6 +271,23 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
         return 1;
     }
 
-    SaveActiveEditorToGitHub();
+    auto* request = new (std::nothrow) EditorSaveRequest();
+    if (!request)
+    {
+        const wchar_t* message[] = { L"GitHub", L"Не удалось запланировать сохранение на GitHub." };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+        return 1;
+    }
+
+    HANDLE thread = CreateThread(nullptr, 0, EditorSaveRequestProc, request, 0, nullptr);
+    if (!thread)
+    {
+        delete request;
+        const wchar_t* message[] = { L"GitHub", L"Не удалось запустить сохранение на GitHub." };
+        GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, message, 2, 1);
+        return 1;
+    }
+
+    CloseHandle(thread);
     return 1;
 }
