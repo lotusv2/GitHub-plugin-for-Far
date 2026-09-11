@@ -182,11 +182,13 @@ void BeginGitHubEditorSession(const std::wstring& tempFile,
     EditorSessionActive = true;
 }
 
-void EndGitHubEditorSession()
+std::wstring EndGitHubEditorSession()
 {
     std::lock_guard<std::mutex> lock(EditorSessionMutex);
+    const std::wstring remoteSha = ActiveEditorSession.RemoteSha;
     ActiveEditorSession = {};
     EditorSessionActive = false;
+    return remoteSha;
 }
 
 intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
