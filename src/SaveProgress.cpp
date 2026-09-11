@@ -222,6 +222,58 @@ std::wstring EndGitHubEditorSession()
     return remoteSha;
 }
 
+bool HandleGitHubEditorExitRequest()
+{
+    EditorInfo editorInfo = { sizeof(editorInfo) };
+    if (!GPluginInfo.EditorControl(-1, ECTL_GETINFO, 0, &editorInfo))
+        return true;
+
+    if ((editorInfo.CurState & ECSTATE_MODIFIED) == 0)
+    {
+        GPluginInfo.EditorControl(-1, ECTL_QUIT, 0, nullptr);
+        return true;
+    }
+
+    const wchar_t* message[] =
+    {
+        L"GitHub",
+        L"Файл изменён. Сохранить изменения на GitHub?",
+        L"Сохранить",
+        L"Не сохранять",
+        L"Отмена"
+    };
+
+    const intptr_t result = GPluginInfo.Message(
+        &MainGuid,
+        nullptr,
+        FMSG_MB_YESNOCANCEL,
+        nullptr,
+        message,
+        std::size(message),
+        3);
+
+    if (result == 2 || result < 0)
+        return true;
+
+    if (result == 0)
+    {
+        if (!GPluginInfo.EditorControl(-1, ECTL_SAVEFILE, 0, nullptr))
+        {
+            const wchar_t* error[] = { L"GitHub", L"Не удалось сохранить файл в редакторе." };
+            GPluginInfo.Message(&MainGuid, nullptr, FMSG_ERRORTYPE | FMSG_MB_OK, nullptr, error, 2, 1);
+            return true;
+        }
+
+        if (!SaveActiveEditorToGitHub())
+            return true;
+    }
+
+    // Закрываем редактор только после успешного сохранения на GitHub
+    // или после явного выбора «Не сохранять».
+    GPluginInfo.EditorControl(-1, ECTL_QUIT, 0, nullptr);
+    return true;
+}
+
 intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
 {
     if (!info || info->StructSize < sizeof(*info) || info->Event != SE_COMMONSYNCHRO || !info->Param)
@@ -264,6 +316,9 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
     const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
     const bool alt = (state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) != 0;
     const bool shift = (state & SHIFT_PRESSED) != 0;
+
+    if (!ctrl && !alt && !shift && (key.wVirtualKeyCode == VK_ESCAPE || key.wVirtualKeyCode == VK_F10))
+        return HandleGitHubEditorExitRequest() ? 1 : 0;
 
     if (key.wVirtualKeyCode != VK_F2 || ctrl || alt || shift)
         return 0;
