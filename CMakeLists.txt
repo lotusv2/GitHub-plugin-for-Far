@@ -57,9 +57,6 @@ add_library(FarGitHub SHARED
     src/FarGitHub.def
 )
 
-# ProcessEditorEventW вызывается Far только для плагинов с PF_EDITOR.
-set_source_files_properties(src/Plugin.cpp PROPERTIES COMPILE_DEFINITIONS PF_NONE=PF_EDITOR)
-
 target_compile_definitions(FarGitHub PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(FarGitHub PRIVATE /W4 /EHsc /FIwindows.h)
 target_link_libraries(FarGitHub PRIVATE winhttp crypt32 user32)
