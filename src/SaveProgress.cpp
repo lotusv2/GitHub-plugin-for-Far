@@ -26,7 +26,7 @@ intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param
     if (message == DN_CLOSE)
     {
         // Пока операция не завершена, закрывать диалог нельзя.
-        auto* context = static_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
+        auto* context = reinterpret_cast<ProgressContext*>(GPluginInfo.SendDlgMessage(hDlg, DM_GETDLGDATA, 0, nullptr));
         if (!context || !context->Finished.load())
             return FALSE;
         return TRUE;
@@ -93,6 +93,7 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     HANDLE thread = CreateThread(nullptr, 0, ProgressWorkerProc, &context, 0, nullptr);
     if (!thread)
     {
+        context.Finished = true;
         GPluginInfo.SendDlgMessage(context.Dialog, DM_CLOSE, 0, nullptr);
         GPluginInfo.DialogFree(context.Dialog);
         return operation();
