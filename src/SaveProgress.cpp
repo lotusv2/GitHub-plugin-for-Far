@@ -138,7 +138,6 @@ bool ProcessEditorSave(const EditorSaveFile* saveFile)
 
     return true;
 }
-}
 
 bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation)
 {
@@ -163,6 +162,8 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     CloseHandle(thread);
     GPluginInfo.DialogFree(context.Dialog);
     return context.Result.load();
+}
+
 }
 
 void BeginGitHubEditorSession(const std::wstring& tempFile,
