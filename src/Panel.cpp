@@ -419,17 +419,10 @@ bool FarGitHubPanel::EditFile(const std::wstring& path)
     if (!GetTempFileNameW(tempPath, L"gh", 0, tempFile)) { Error = L"Unable to create temporary file"; ShowError(); return false; }
     { std::ofstream file(tempFile, std::ios::binary); if (!file) { DeleteFileW(tempFile); Error = L"Unable to create temporary file"; ShowError(); return false; } file.write(content.data(), static_cast<std::streamsize>(content.size())); }
     BeginGitHubEditorSession(tempFile, path, sha, Token, Repository, CurrentBranch);
-    const intptr_t rc = GPluginInfo.Editor(tempFile, path.c_str(), 0, 0, -1, -1, 0, 1, 1, CP_DEFAULT);
+    GPluginInfo.Editor(tempFile, path.c_str(), 0, 0, -1, -1, 0, 1, 1, CP_DEFAULT);
     EndGitHubEditorSession();
-    bool success = true;
-    if (rc == EEC_MODIFIED)
-    {
-        std::ifstream file(tempFile, std::ios::binary);
-        std::string updated((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        if (!client.PutFile(path, updated, sha, L"Update " + path, Error)) { ShowError(); success = false; }
-    }
     DeleteFileW(tempFile);
-    return success;
+    return true;
 }
 
 intptr_t FarGitHubPanel::ProcessHostFile(PluginPanelItem* items, size_t count, OPERATION_MODES)
