@@ -75,43 +75,14 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
     info->CommandPrefix = L"gh";
 }
 
-HANDLE WINAPI OpenW(const OpenInfo* info)
+HANDLE WINAPI OpenW(const OpenInfo*)
 {
-    const wchar_t* entered[] = { L"GitHub for Far", L"OpenW() entered." };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, entered, 2, 1);
-
-    std::wstring diagnostic;
-    if (info)
-    {
-        diagnostic = L"OpenFrom=" + std::to_wstring(static_cast<int>(info->OpenFrom)) +
-                     L"; StructSize=" + std::to_wstring(info->StructSize);
-    }
-    else
-    {
-        diagnostic = L"OpenInfo is null.";
-    }
-
-    const wchar_t* openInfoMessage[] = { L"GitHub for Far", diagnostic.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, openInfoMessage, 2, 1);
-
     ActivePanel = std::make_unique<FarGitHubPanel>();
-
-    const wchar_t* created[] = { L"GitHub for Far", L"FarGitHubPanel created." };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, created, 2, 1);
-
-    const std::wstring handleText = L"Handle=" + std::to_wstring(reinterpret_cast<uintptr_t>(ActivePanel.get()));
-    const wchar_t* handleMessage[] = { L"GitHub for Far", handleText.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, handleMessage, 2, 1);
-
     return ActivePanel.get();
 }
 
-void WINAPI ClosePanelW(const ClosePanelInfo* info)
+void WINAPI ClosePanelW(const ClosePanelInfo*)
 {
-    const std::wstring diagnostic = !info ? L"ClosePanel: info=null" :
-        L"ClosePanel: hPanel=" + std::to_wstring(reinterpret_cast<uintptr_t>(info->hPanel));
-    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
     ActivePanel.reset();
 }
 
@@ -166,18 +137,7 @@ intptr_t WINAPI SetDirectoryW(const SetDirectoryInfo* info)
         return FALSE;
 
     auto* panel = static_cast<FarGitHubPanel*>(info->hPanel);
-    const std::wstring directory = info->Dir ? info->Dir : L"<null>";
-    const intptr_t result = panel->SetDirectory(info->Dir, info->OpMode);
-
-    const std::wstring diagnostic =
-        L"SetDirectory: Dir=[" + directory + L"] OpMode=" +
-        std::to_wstring(static_cast<unsigned long long>(info->OpMode)) +
-        L" Result=" + std::to_wstring(static_cast<long long>(result)) +
-        L" " + panel->GetDiagnosticState();
-    const wchar_t* message[] = { L"GitHub for Far", diagnostic.c_str() };
-    GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_OK, nullptr, message, 2, 1);
-
-    return result;
+    return panel->SetDirectory(info->Dir, info->OpMode);
 }
 
 intptr_t WINAPI ProcessHostFileW(const ProcessHostFileInfo* info)
