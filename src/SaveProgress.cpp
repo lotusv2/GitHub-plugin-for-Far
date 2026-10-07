@@ -17,6 +17,7 @@ const GUID ProgressDialogGuid = { 0x3d5b7a21, 0x4c8e, 0x47a2, { 0x91, 0x35, 0x62
 enum class SyncRequestType : unsigned long
 {
     Progress = 0x47504850,
+    ProgressUpdate = 0x47504855,
     EditorSave = 0x47504853,
     EditorExit = 0x47504845
 };
@@ -32,11 +33,21 @@ struct ProgressContext : SyncRequest
     std::function<bool()> Operation;
     std::atomic<bool> Finished{ false };
     std::atomic<bool> Result{ false };
+    std::atomic<size_t> Current{ 0 };
+    std::atomic<size_t> Total{ 0 };
+    std::mutex TextMutex;
+    std::wstring Item;
 
     ProgressContext()
     {
         Type = SyncRequestType::Progress;
     }
+};
+
+struct ProgressUpdateRequest : SyncRequest
+{
+    ProgressContext* Context = nullptr;
+    ProgressUpdateRequest() { Type = SyncRequestType::ProgressUpdate; }
 };
 
 struct EditorSaveRequest : SyncRequest
@@ -65,6 +76,8 @@ struct EditorSession
     std::wstring Branch;
 };
 
+std::mutex ProgressContextMutex;
+ProgressContext* ActiveProgressContext = nullptr;
 std::mutex EditorSessionMutex;
 EditorSession ActiveEditorSession;
 bool EditorSessionActive = false;
@@ -118,9 +131,11 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
 {
     FarDialogItem items[] =
     {
-        { DI_DOUBLEBOX, 0, 0, 48, 4, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
-        { DI_TEXT,      2, 1, 46, 1, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, text, 0, 0, { 0, 0 } },
-        { DI_TEXT,      2, 2, 46, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Please wait...", 0, 0, { 0, 0 } }
+        { DI_DOUBLEBOX, 0, 0, 58, 6, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 1, 56, 1, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, text, 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 2, 56, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Please wait...", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 3, 56, 3, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"[                              ]", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 4, 56, 4, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"", 0, 0, { 0, 0 } }
     };
 
     const HANDLE dialog = GPluginInfo.DialogInit(
@@ -128,8 +143,8 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
         &ProgressDialogGuid,
         -1,
         -1,
-        48,
-        4,
+        58,
+        6,
         nullptr,
         items,
         std::size(items),
@@ -193,6 +208,10 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
 {
     ProgressContext context;
     context.Operation = operation;
+    {
+        std::lock_guard<std::mutex> lock(ProgressContextMutex);
+        ActiveProgressContext = &context;
+    }
     context.Dialog = CreateProgressDialog(&context, text);
 
     if (context.Dialog == INVALID_HANDLE_VALUE)
@@ -211,7 +230,31 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
     GPluginInfo.DialogFree(context.Dialog);
+    {
+        std::lock_guard<std::mutex> lock(ProgressContextMutex);
+        if (ActiveProgressContext == &context) ActiveProgressContext = nullptr;
+    }
     return context.Result.load();
+}
+
+void UpdateGitHubProgress(size_t current, size_t total, const std::wstring& item)
+{
+    ProgressContext* context = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(ProgressContextMutex);
+        context = ActiveProgressContext;
+    }
+    if (!context) return;
+    context->Current = current;
+    context->Total = total;
+    {
+        std::lock_guard<std::mutex> lock(context->TextMutex);
+        context->Item = item;
+    }
+    auto* request = new (std::nothrow) ProgressUpdateRequest();
+    if (!request) return;
+    request->Context = context;
+    GPluginInfo.AdvControl(&MainGuid, ACTL_SYNCHRO, 0, request);
 }
 
 void BeginGitHubEditorSession(const std::wstring& tempFile,
@@ -298,6 +341,31 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
         return 0;
 
     auto* request = static_cast<SyncRequest*>(info->Param);
+
+    if (request->Type == SyncRequestType::ProgressUpdate)
+    {
+        auto* update = static_cast<ProgressUpdateRequest*>(request);
+        auto* context = update->Context;
+        delete update;
+        if (!context || context->Dialog == INVALID_HANDLE_VALUE) return 0;
+
+        const size_t current = context->Current.load();
+        const size_t total = context->Total.load();
+        const size_t percent = total ? (current * 100 / total) : 0;
+        const size_t filled = total ? (percent * 30 / 100) : 0;
+        std::wstring bar = L"[" + std::wstring(filled, L'#') + std::wstring(30 - filled, L'-') + L"] " + std::to_wstring(percent) + L"%";
+        std::wstring item;
+        {
+            std::lock_guard<std::mutex> lock(context->TextMutex);
+            item = context->Item;
+        }
+        std::wstring status = std::to_wstring(current) + L" / " + std::to_wstring(total);
+        if (!item.empty()) status += L"  " + item;
+        FarDialogItemData data = { sizeof(data), bar.size() + 1, const_cast<wchar_t*>(bar.c_str()) };
+        GPluginInfo.SendDlgMessage(context->Dialog, DM_SETTEXTPTR, 2, const_cast<wchar_t*>(status.c_str()));
+        GPluginInfo.SendDlgMessage(context->Dialog, DM_SETTEXTPTR, 3, const_cast<wchar_t*>(bar.c_str()));
+        return 0;
+    }
 
     if (request->Type == SyncRequestType::EditorSave)
     {
