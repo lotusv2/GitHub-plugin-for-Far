@@ -4,6 +4,7 @@
 #include <string>
 
 bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operation);
+void UpdateGitHubProgress(size_t current, size_t total, const std::wstring& item = {});
 
 void BeginGitHubEditorSession(const std::wstring& tempFile,
                               const std::wstring& remotePath,
