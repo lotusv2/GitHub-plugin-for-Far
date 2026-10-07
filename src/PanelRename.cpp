@@ -1,5 +1,6 @@
 #include "Panel.hpp"
 #include "Plugin.hpp"
+#include "SaveProgress.hpp"
 
 #include <functional>
 
@@ -113,63 +114,65 @@ intptr_t ProcessRenameInput(FarGitHubPanel* panel)
         return TRUE;
     }
 
-    bool success = false;
-    if (isDirectory)
-    {
-        std::function<bool(const std::wstring&, const std::wstring&)> moveEntry;
-        moveEntry = [&](const std::wstring& source, const std::wstring& destination) -> bool
+    const bool success = RunGitHubProgress(
+        L"Renaming on GitHub...",
+        [&]()
         {
-            std::vector<GitHubEntry> children;
-            std::wstring listError;
-            if (client.GetEntries(source, children, listError))
+            if (isDirectory)
             {
-                if (children.empty())
-                    return client.CreateDirectoryEntry(destination, L"Rename directory " + source, panel->Error);
-
-                for (const auto& child : children)
+                std::function<bool(const std::wstring&, const std::wstring&)> moveEntry;
+                moveEntry = [&](const std::wstring& source, const std::wstring& destination) -> bool
                 {
-                    if (!moveEntry(source + L"/" + child.Name, destination + L"/" + child.Name))
+                    std::vector<GitHubEntry> children;
+                    std::wstring listError;
+                    if (client.GetEntries(source, children, listError))
+                    {
+                        if (children.empty())
+                            return client.CreateDirectoryEntry(destination, L"Rename directory " + source, panel->Error);
+
+                        for (const auto& child : children)
+                        {
+                            if (!moveEntry(source + L"/" + child.Name, destination + L"/" + child.Name))
+                                return false;
+                        }
+
+                        for (const auto& child : children)
+                        {
+                            // Дочерний каталог уже очищен рекурсивным вызовом.
+                            if (child.Type == L"dir")
+                                continue;
+
+                            const std::wstring childPath = source + L"/" + child.Name;
+                            std::string content;
+                            std::wstring sha;
+                            if (!client.GetFile(childPath, content, sha, panel->Error))
+                                return false;
+                            if (!client.DeleteFile(childPath, sha, L"Rename " + source, panel->Error))
+                                return false;
+                        }
+                        return true;
+                    }
+
+                    if (!IsNotFound(listError))
+                    {
+                        panel->Error = listError.empty() ? L"Unable to read rename source." : listError;
                         return false;
-                }
+                    }
 
-                for (const auto& child : children)
-                {
-                    // Дочерний каталог уже очищен рекурсивным вызовом.
-                    if (child.Type == L"dir")
-                        continue;
-
-                    const std::wstring childPath = source + L"/" + child.Name;
                     std::string content;
                     std::wstring sha;
-                    if (!client.GetFile(childPath, content, sha, panel->Error))
+                    if (!client.GetFile(source, content, sha, panel->Error))
                         return false;
-                    if (!client.DeleteFile(childPath, sha, L"Rename " + source, panel->Error))
+                    if (!client.PutFile(destination, content, {}, L"Rename " + source, panel->Error))
                         return false;
-                }
-                return true;
+                    return client.DeleteFile(source, sha, L"Rename " + source, panel->Error);
+                };
+
+                return moveEntry(oldPath, newPath);
             }
 
-            if (!IsNotFound(listError))
-            {
-                panel->Error = listError.empty() ? L"Unable to read rename source." : listError;
-                return false;
-            }
-
-            std::string content;
-            std::wstring sha;
-            if (!client.GetFile(source, content, sha, panel->Error))
-                return false;
-            if (!client.PutFile(destination, content, {}, L"Rename " + source, panel->Error))
-                return false;
-            return client.DeleteFile(source, sha, L"Rename " + source, panel->Error);
-        };
-
-        success = moveEntry(oldPath, newPath);
-    }
-    else
-    {
-        success = panel->RenameEntry(oldPath, newPath);
-    }
+            return panel->RenameEntry(oldPath, newPath);
+        });
 
     if (!success)
     {
