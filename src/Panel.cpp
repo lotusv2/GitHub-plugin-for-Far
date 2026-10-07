@@ -514,6 +514,25 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
     }
     GitHubClient client(Token, Repository, CurrentBranch);
+    size_t totalFiles = 0;
+    std::function<bool(const std::wstring&)> countEntry;
+    countEntry = [&](const std::wstring& remote) -> bool
+    {
+        std::vector<GitHubEntry> children;
+        std::wstring probeError;
+        if (!client.GetEntries(remote, children, probeError))
+        {
+            if (!IsNotFound(probeError)) { Error = probeError.empty() ? L"Unable to count remote entries." : probeError; return false; }
+            ++totalFiles;
+            return true;
+        }
+        for (const auto& child : children)
+            if (!countEntry(remote + L"/" + child.Name)) return false;
+        return true;
+    };
+    for (size_t i = 0; i < count; ++i)
+        if (!countEntry(FullPath(items[i].FileName))) { ShowError(move ? L"Move" : L"Copy"); return FALSE; }
+    size_t completedFiles = 0;
     std::function<bool(const std::wstring&, const std::wstring&)> downloadEntry;
     downloadEntry = [&](const std::wstring& remote, const std::wstring& local) -> bool
     {
@@ -529,6 +548,8 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
             if (!file) { Error = L"Unable to create local file: " + local; return false; }
             file.write(content.data(), static_cast<std::streamsize>(content.size()));
             if (!file) { Error = L"Unable to write local file: " + local; return false; }
+            ++completedFiles;
+            UpdateGitHubProgress(completedFiles, totalFiles, remote);
             return true;
         }
         if (!CreateDirectoryW(local.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) { Error = L"Unable to create local directory: " + local; return false; }
@@ -540,6 +561,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         move ? L"Moving from GitHub..." : L"Copying from GitHub...",
         [&]()
         {
+            UpdateGitHubProgress(0, totalFiles);
             for (size_t i = 0; i < count; ++i)
             {
                 const std::wstring remote = FullPath(items[i].FileName);
@@ -596,6 +618,25 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
 {
     if (!items || !count || Repository.empty()) return FALSE;
     GitHubClient client(Token, Repository, CurrentBranch);
+    size_t totalFiles = 0;
+    std::function<bool(const std::wstring&)> countEntry;
+    countEntry = [&](const std::wstring& path) -> bool
+    {
+        std::vector<GitHubEntry> children;
+        std::wstring listError;
+        if (client.GetEntries(path, children, listError))
+        {
+            for (const auto& child : children)
+                if (!countEntry(path + L"/" + child.Name)) return false;
+            return true;
+        }
+        if (!IsNotFound(listError)) { Error = listError.empty() ? L"Unable to count delete source." : listError; return false; }
+        ++totalFiles;
+        return true;
+    };
+    for (size_t i = 0; i < count; ++i)
+        if (!countEntry(FullPath(items[i].FileName))) { ShowError(L"Delete"); return FALSE; }
+    size_t completedFiles = 0;
     std::function<bool(const std::wstring&)> removeEntry;
     removeEntry = [&](const std::wstring& path) -> bool
     {
@@ -610,7 +651,10 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         std::string content;
         std::wstring sha;
         if (!client.GetFile(path, content, sha, Error)) return false;
-        return client.DeleteFile(path, sha, L"Delete " + path, Error);
+        if (!client.DeleteFile(path, sha, L"Delete " + path, Error)) return false;
+        ++completedFiles;
+        UpdateGitHubProgress(completedFiles, totalFiles, path);
+        return true;
     };
     if (!(opMode & OPM_SILENT))
     {
@@ -621,6 +665,7 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         L"Deleting from GitHub...",
         [&]()
         {
+            UpdateGitHubProgress(0, totalFiles);
             for (size_t i = 0; i < count; ++i)
             {
                 if (!removeEntry(FullPath(items[i].FileName))) return false;
