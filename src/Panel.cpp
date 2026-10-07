@@ -511,7 +511,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
     if (!(opMode & OPM_SILENT))
     {
         const wchar_t* text[] = { L"GitHub", move ? L"Move selected item(s) from GitHub?" : L"Copy selected item(s) from GitHub?" };
-        if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
+        if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
     }
     GitHubClient client(Token, Repository, CurrentBranch);
     std::function<bool(const std::wstring&, const std::wstring&)> downloadEntry;
