@@ -513,70 +513,107 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
         const wchar_t* text[] = { L"GitHub", move ? L"Move selected item(s) from GitHub?" : L"Copy selected item(s) from GitHub?" };
         if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
     }
+
     GitHubClient client(Token, Repository, CurrentBranch);
-    size_t totalFiles = 0;
-    std::function<bool(const std::wstring&)> countEntry;
-    countEntry = [&](const std::wstring& remote) -> bool
+    struct DownloadFile
+    {
+        std::wstring Remote;
+        std::wstring Local;
+        bool Skip = false;
+    };
+    std::vector<DownloadFile> files;
+
+    std::function<bool(const std::wstring&, const std::wstring&)> collectEntry;
+    collectEntry = [&](const std::wstring& remote, const std::wstring& local) -> bool
     {
         std::vector<GitHubEntry> children;
         std::wstring probeError;
         if (!client.GetEntries(remote, children, probeError))
         {
-            if (!IsNotFound(probeError)) { Error = probeError.empty() ? L"Unable to count remote entries." : probeError; return false; }
-            ++totalFiles;
+            if (!IsNotFound(probeError))
+            {
+                Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError;
+                return false;
+            }
+            files.push_back({ remote, local, false });
             return true;
         }
+
+        if (!CreateDirectoryW(local.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
+        {
+            Error = L"Unable to create local directory: " + local;
+            return false;
+        }
         for (const auto& child : children)
-            if (!countEntry(remote + L"/" + child.Name)) return false;
+            if (!collectEntry(remote + L"/" + child.Name, JoinLocalPath(local, child.Name))) return false;
         return true;
     };
+
     for (size_t i = 0; i < count; ++i)
-        if (!countEntry(FullPath(items[i].FileName))) { ShowError(move ? L"Move" : L"Copy"); return FALSE; }
-    size_t completedFiles = 0;
-    std::function<bool(const std::wstring&, const std::wstring&)> downloadEntry;
-    downloadEntry = [&](const std::wstring& remote, const std::wstring& local) -> bool
     {
-        std::vector<GitHubEntry> children;
-        std::wstring probeError;
-        if (!client.GetEntries(remote, children, probeError))
+        const std::wstring remote = FullPath(items[i].FileName);
+        const std::wstring local = JoinLocalPath(destinationPath, items[i].FileName);
+        if (!collectEntry(remote, local)) { ShowError(move ? L"Move" : L"Copy"); return FALSE; }
+    }
+
+    // Resolve all overwrite conflicts before the worker/progress dialog starts.
+    for (auto& file : files)
+    {
+        const DWORD attributes = GetFileAttributesW(file.Local.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES) continue;
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
         {
-            if (!IsNotFound(probeError)) { Error = probeError.empty() ? L"Unable to determine remote entry type." : probeError; return false; }
-            std::string content;
-            std::wstring sha;
-            if (!client.GetFile(remote, content, sha, Error)) return false;
-            std::ofstream file(local, std::ios::binary);
-            if (!file) { Error = L"Unable to create local file: " + local; return false; }
-            file.write(content.data(), static_cast<std::streamsize>(content.size()));
-            if (!file) { Error = L"Unable to write local file: " + local; return false; }
-            ++completedFiles;
-            UpdateGitHubProgress(completedFiles, totalFiles, remote);
-            return true;
+            Error = L"A directory already exists where a file must be written: " + file.Local;
+            ShowError(move ? L"Move" : L"Copy");
+            return FALSE;
         }
-        if (!CreateDirectoryW(local.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) { Error = L"Unable to create local directory: " + local; return false; }
-        for (const auto& child : children)
-            if (!downloadEntry(remote + L"/" + child.Name, JoinLocalPath(local, child.Name))) return false;
-        return true;
-    };
+
+        const std::wstring question = L"File already exists:\n" + file.Local + L"\n\nOverwrite it?";
+        const wchar_t* text[] = { L"GitHub", question.c_str(), L"Overwrite", L"Skip", L"Cancel" };
+        const intptr_t answer = GPluginInfo.Message(&MainGuid, nullptr, 0, nullptr, text, std::size(text), 3);
+        if (answer < 0 || answer == 2) return FALSE;
+        if (answer == 1) file.Skip = true;
+    }
+
+    const size_t totalFiles = files.size();
+    size_t completedFiles = 0;
     const bool success = RunGitHubProgress(
         move ? L"Moving from GitHub..." : L"Copying from GitHub...",
         [&]()
         {
             UpdateGitHubProgress(0, totalFiles);
-            for (size_t i = 0; i < count; ++i)
+            for (auto& file : files)
             {
-                const std::wstring remote = FullPath(items[i].FileName);
-                const std::wstring local = JoinLocalPath(destinationPath, items[i].FileName);
-                if (!downloadEntry(remote, local)) return false;
+                if (file.Skip)
+                {
+                    ++completedFiles;
+                    UpdateGitHubProgress(completedFiles, totalFiles, file.Remote + L" (skipped)");
+                    continue;
+                }
+
+                std::string content;
+                std::wstring sha;
+                if (!client.GetFile(file.Remote, content, sha, Error)) return false;
+
+                std::ofstream output(file.Local, std::ios::binary | std::ios::trunc);
+                if (!output) { Error = L"Unable to create local file: " + file.Local; return false; }
+                output.write(content.data(), static_cast<std::streamsize>(content.size()));
+                if (!output) { Error = L"Unable to write local file: " + file.Local; return false; }
+                output.close();
+
                 if (move)
                 {
-                    Error.clear();
-                    if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return false;
+                    if (!client.DeleteFile(file.Remote, sha, L"Move " + file.Remote, Error)) return false;
                 }
-                items[i].Flags &= ~PPIF_SELECTED;
+
+                ++completedFiles;
+                UpdateGitHubProgress(completedFiles, totalFiles, file.Remote);
             }
             return true;
         });
+
     if (!success) { ShowError(move ? L"Move" : L"Copy"); return FALSE; }
+    for (size_t i = 0; i < count; ++i) items[i].Flags &= ~PPIF_SELECTED;
     Reload();
     return TRUE;
 }
