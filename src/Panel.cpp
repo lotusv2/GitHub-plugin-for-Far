@@ -505,9 +505,14 @@ intptr_t FarGitHubPanel::PutFiles(PluginPanelItem* items, size_t count, const wc
     return TRUE;
 }
 
-intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES)
+intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool move, const wchar_t* destinationPath, OPERATION_MODES opMode)
 {
     if (!items || !count || !destinationPath || Repository.empty()) return FALSE;
+    if (!(opMode & OPM_SILENT))
+    {
+        const wchar_t* text[] = { L"GitHub", move ? L"Move selected item(s) from GitHub?" : L"Copy selected item(s) from GitHub?" };
+        if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
+    }
     GitHubClient client(Token, Repository, CurrentBranch);
     std::function<bool(const std::wstring&, const std::wstring&)> downloadEntry;
     downloadEntry = [&](const std::wstring& remote, const std::wstring& local) -> bool
@@ -531,18 +536,25 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
             if (!downloadEntry(remote + L"/" + child.Name, JoinLocalPath(local, child.Name))) return false;
         return true;
     };
-    for (size_t i = 0; i < count; ++i)
-    {
-        const std::wstring remote = FullPath(items[i].FileName);
-        const std::wstring local = JoinLocalPath(destinationPath, items[i].FileName);
-        if (!downloadEntry(remote, local)) { ShowError(); return FALSE; }
-        if (move)
+    const bool success = RunGitHubProgress(
+        move ? L"Moving from GitHub..." : L"Copying from GitHub...",
+        [&]()
         {
-            Error.clear();
-            if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return FALSE;
-        }
-        items[i].Flags &= ~PPIF_SELECTED;
-    }
+            for (size_t i = 0; i < count; ++i)
+            {
+                const std::wstring remote = FullPath(items[i].FileName);
+                const std::wstring local = JoinLocalPath(destinationPath, items[i].FileName);
+                if (!downloadEntry(remote, local)) return false;
+                if (move)
+                {
+                    Error.clear();
+                    if (!DeleteFiles(&items[i], 1, OPM_SILENT)) return false;
+                }
+                items[i].Flags &= ~PPIF_SELECTED;
+            }
+            return true;
+        });
+    if (!success) { ShowError(move ? L"Move" : L"Copy"); return FALSE; }
     Reload();
     return TRUE;
 }
@@ -605,11 +617,18 @@ intptr_t FarGitHubPanel::DeleteFiles(PluginPanelItem* items, size_t count, OPERA
         const wchar_t* text[] = { L"GitHub", L"Delete selected item(s)?" };
         if (GPluginInfo.Message(&MainGuid, nullptr, FMSG_WARNING | FMSG_MB_YESNO, nullptr, text, 2, 1) != 0) return FALSE;
     }
-    for (size_t i = 0; i < count; ++i)
-    {
-        if (!removeEntry(FullPath(items[i].FileName))) { ShowError(); return FALSE; }
-        items[i].Flags &= ~PPIF_SELECTED;
-    }
+    const bool success = RunGitHubProgress(
+        L"Deleting from GitHub...",
+        [&]()
+        {
+            for (size_t i = 0; i < count; ++i)
+            {
+                if (!removeEntry(FullPath(items[i].FileName))) return false;
+                items[i].Flags &= ~PPIF_SELECTED;
+            }
+            return true;
+        });
+    if (!success) { ShowError(L"Delete"); return FALSE; }
     Reload();
     return TRUE;
 }
