@@ -134,7 +134,7 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
         { DI_DOUBLEBOX, 0, 0, 58, 6, { 0 }, nullptr, nullptr, DIF_NONE, L"GitHub", 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 1, 56, 1, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, text, 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 2, 56, 2, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"Please wait...", 0, 0, { 0, 0 } },
-        { DI_TEXT,      2, 3, 56, 3, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"[                              ]", 0, 0, { 0, 0 } },
+        { DI_TEXT,      2, 3, 56, 3, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"", 0, 0, { 0, 0 } },
         { DI_TEXT,      2, 4, 56, 4, { 0 }, nullptr, nullptr, DIF_CENTERTEXT, L"", 0, 0, { 0, 0 } }
     };
 
@@ -353,7 +353,7 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
         const size_t total = context->Total.load();
         const size_t percent = total ? (current * 100 / total) : 0;
         const size_t filled = total ? (percent * 30 / 100) : 0;
-        std::wstring bar = L"[" + std::wstring(filled, L'#') + std::wstring(30 - filled, L'-') + L"] " + std::to_wstring(percent) + L"%";
+        std::wstring bar = std::wstring(filled, L'█') + std::wstring(30 - filled, L'░') + L" " + std::to_wstring(percent) + L"%";
         std::wstring item;
         {
             std::lock_guard<std::mutex> lock(context->TextMutex);
@@ -361,7 +361,6 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
         }
         std::wstring status = std::to_wstring(current) + L" / " + std::to_wstring(total);
         if (!item.empty()) status += L"  " + item;
-        FarDialogItemData data = { sizeof(data), bar.size() + 1, const_cast<wchar_t*>(bar.c_str()) };
         GPluginInfo.SendDlgMessage(context->Dialog, DM_SETTEXTPTR, 2, const_cast<wchar_t*>(status.c_str()));
         GPluginInfo.SendDlgMessage(context->Dialog, DM_SETTEXTPTR, 3, const_cast<wchar_t*>(bar.c_str()));
         return 0;
