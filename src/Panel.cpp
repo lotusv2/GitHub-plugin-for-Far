@@ -568,8 +568,7 @@ intptr_t FarGitHubPanel::GetFiles(PluginPanelItem* items, size_t count, bool mov
             return FALSE;
         }
 
-        const std::wstring question = L"File already exists:\n" + file.Local + L"\n\nOverwrite it?";
-        const wchar_t* text[] = { L"GitHub", question.c_str(), L"Overwrite", L"Skip", L"Cancel" };
+        const wchar_t* text[] = { L"GitHub", L"File already exists:", file.Local.c_str(), L"", L"Overwrite it?", L"Overwrite", L"Skip", L"Cancel" };
         const intptr_t answer = GPluginInfo.Message(&MainGuid, nullptr, 0, nullptr, text, std::size(text), 3);
         if (answer < 0 || answer == 2) return FALSE;
         if (answer == 1) file.Skip = true;
