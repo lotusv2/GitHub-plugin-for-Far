@@ -3,6 +3,7 @@
 #include "GitHubClient.hpp"
 
 #include <atomic>
+#include <cwchar>
 #include <fstream>
 #include <functional>
 #include <iterator>
@@ -52,6 +53,7 @@ struct ProgressUpdateRequest : SyncRequest
 
 struct EditorSaveRequest : SyncRequest
 {
+    intptr_t EditorId = -1;
     EditorSaveRequest()
     {
         Type = SyncRequestType::EditorSave;
@@ -60,6 +62,7 @@ struct EditorSaveRequest : SyncRequest
 
 struct EditorExitRequest : SyncRequest
 {
+    intptr_t EditorId = -1;
     EditorExitRequest()
     {
         Type = SyncRequestType::EditorExit;
@@ -81,6 +84,38 @@ ProgressContext* ActiveProgressContext = nullptr;
 std::mutex EditorSessionMutex;
 EditorSession ActiveEditorSession;
 bool EditorSessionActive = false;
+
+// Editor callbacks are delivered to all editors, not just those opened by this plugin.
+// Compare the actual filename with our temporary GitHub file before intercepting keys.
+bool IsGitHubEditorActive(intptr_t* currentEditorId = nullptr, intptr_t expectedEditorId = -1)
+{
+    std::wstring tempFile;
+    {
+        std::lock_guard<std::mutex> lock(EditorSessionMutex);
+        if (!EditorSessionActive)
+            return false;
+        tempFile = ActiveEditorSession.TempFile;
+    }
+
+    EditorInfo info = { sizeof(info) };
+    if (!GPluginInfo.EditorControl(-1, ECTL_GETINFO, 0, &info))
+        return false;
+    if (expectedEditorId != -1 && info.EditorID != expectedEditorId)
+        return false;
+
+    const intptr_t required = GPluginInfo.EditorControl(-1, ECTL_GETFILENAME, 0, nullptr);
+    if (required <= 1)
+        return false;
+    std::wstring filename(static_cast<size_t>(required), L'\0');
+    if (GPluginInfo.EditorControl(-1, ECTL_GETFILENAME, required, filename.data()) <= 0)
+        return false;
+    if (_wcsicmp(filename.c_str(), tempFile.c_str()) != 0)
+        return false;
+
+    if (currentEditorId)
+        *currentEditorId = info.EditorID;
+    return true;
+}
 
 intptr_t WINAPI ProgressDialogProc(HANDLE hDlg, intptr_t message, intptr_t param1, void* param2)
 {
@@ -161,6 +196,9 @@ HANDLE CreateProgressDialog(ProgressContext* context, const wchar_t* text)
 
 bool SaveActiveEditorToGitHub()
 {
+    if (!IsGitHubEditorActive())
+        return false;
+
     EditorSession session;
     {
         std::lock_guard<std::mutex> lock(EditorSessionMutex);
@@ -285,6 +323,9 @@ std::wstring EndGitHubEditorSession()
 
 bool HandleGitHubEditorExitRequest()
 {
+    if (!IsGitHubEditorActive())
+        return false;
+
     EditorInfo editorInfo = { sizeof(editorInfo) };
     if (!GPluginInfo.EditorControl(-1, ECTL_GETINFO, 0, &editorInfo))
         return true;
@@ -369,16 +410,20 @@ intptr_t WINAPI ProcessSynchroEventW(const ProcessSynchroEventInfo* info)
     if (request->Type == SyncRequestType::EditorSave)
     {
         auto* saveRequest = static_cast<EditorSaveRequest*>(request);
+        const intptr_t editorId = saveRequest->EditorId;
         delete saveRequest;
-        SaveActiveEditorToGitHub();
+        if (IsGitHubEditorActive(nullptr, editorId))
+            SaveActiveEditorToGitHub();
         return 0;
     }
 
     if (request->Type == SyncRequestType::EditorExit)
     {
         auto* exitRequest = static_cast<EditorExitRequest*>(request);
+        const intptr_t editorId = exitRequest->EditorId;
         delete exitRequest;
-        HandleGitHubEditorExitRequest();
+        if (IsGitHubEditorActive(nullptr, editorId))
+            HandleGitHubEditorExitRequest();
         return 0;
     }
 
@@ -404,6 +449,10 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
     if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
         return 0;
 
+    intptr_t editorId = -1;
+    if (!IsGitHubEditorActive(&editorId))
+        return 0; // Leave ordinary Far editors and other plugins untouched.
+
     const auto& key = record.Event.KeyEvent;
     const DWORD state = key.dwControlKeyState;
     const bool ctrl = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
@@ -420,6 +469,7 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
             return 1;
         }
 
+        request->EditorId = editorId;
         HANDLE thread = CreateThread(nullptr, 0, EditorExitRequestProc, request, 0, nullptr);
         if (!thread)
         {
@@ -454,6 +504,7 @@ intptr_t WINAPI ProcessEditorInputW(const ProcessEditorInputInfo* info)
         return 1;
     }
 
+    request->EditorId = editorId;
     HANDLE thread = CreateThread(nullptr, 0, EditorSaveRequestProc, request, 0, nullptr);
     if (!thread)
     {
