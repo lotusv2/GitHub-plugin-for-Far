@@ -250,10 +250,21 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
         std::lock_guard<std::mutex> lock(ProgressContextMutex);
         ActiveProgressContext = &context;
     }
+    const auto clearProgressContext = [&context]()
+    {
+        std::lock_guard<std::mutex> lock(ProgressContextMutex);
+        if (ActiveProgressContext == &context)
+            ActiveProgressContext = nullptr;
+    };
+
     context.Dialog = CreateProgressDialog(&context, text);
 
     if (context.Dialog == INVALID_HANDLE_VALUE)
+    {
+        // No dialog: run normally without retaining a pointer to a stack context.
+        clearProgressContext();
         return operation();
+    }
 
     HANDLE thread = CreateThread(nullptr, 0, ProgressWorkerProc, &context, 0, nullptr);
     if (!thread)
@@ -261,6 +272,7 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
         context.Finished = true;
         GPluginInfo.SendDlgMessage(context.Dialog, DM_CLOSE, 0, nullptr);
         GPluginInfo.DialogFree(context.Dialog);
+        clearProgressContext();
         return operation();
     }
 
@@ -268,10 +280,7 @@ bool RunGitHubProgress(const wchar_t* text, const std::function<bool()>& operati
     WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
     GPluginInfo.DialogFree(context.Dialog);
-    {
-        std::lock_guard<std::mutex> lock(ProgressContextMutex);
-        if (ActiveProgressContext == &context) ActiveProgressContext = nullptr;
-    }
+    clearProgressContext();
     return context.Result.load();
 }
 
